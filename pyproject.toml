@@ -87,3 +87,7 @@ strict = false
 warn_unused_ignores = true
 check_untyped_defs = true
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["pytesseract", "cv2"]
+ignore_missing_imports = true

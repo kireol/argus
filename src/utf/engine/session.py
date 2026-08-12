@@ -105,7 +105,11 @@ class RunSession:
             for platform in platforms:
                 names.extend(self.devices_for_platform(platform))
         seen: set[str] = set()
-        unique = [n for n in names if not (n in seen or seen.add(n))]
+        unique: list[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                unique.append(name)
         return unique
 
     # -- instrumentation ---------------------------------------------------------------

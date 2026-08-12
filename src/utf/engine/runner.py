@@ -175,18 +175,29 @@ class TestRunner:
             if name in self.config.devices and name not in names:
                 names.append(name)
         seen: set[str] = set()
-        return [n for n in names if not (n in seen or seen.add(n))]
+        unique: list[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                unique.append(name)
+        return unique
 
     def _platforms_for(
         self, test: TestDefinition, filters: TestFilter, session: RunSession
-    ) -> list[str]:
-        """Platforms this test executes on in this run (one execution each)."""
-        platforms = test.platforms or [None]  # type: ignore[list-item]
+    ) -> list[str | None]:
+        """Platforms this test executes on in this run (one execution each).
+
+        A test without a platforms list runs once with no device bound.
+        """
+        platforms: list[str | None] = list(test.platforms) or [None]
         if filters.platforms:
             platforms = [p for p in platforms if p in filters.platforms]
-        return [p for p in platforms if p is None or session.devices_for_platform(p)] or (
-            [None] if not test.platforms else []
-        )
+        runnable = [
+            p for p in platforms if p is None or session.devices_for_platform(p)
+        ]
+        if not runnable and not test.platforms:
+            return [None]
+        return runnable
 
     def _skipped(self, test: TestDefinition, reason: str) -> TestResult:
         return TestResult(

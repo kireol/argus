@@ -146,13 +146,10 @@ def run(
         _dry_run()
         raise typer.Exit(0)
 
-    config = _load_config()
-    _configure_logging(config)
+    app_config = _load_config()
+    _configure_logging(app_config)
 
     filters = _build_filter(test, feature, tag, platform)
-    if not any([test, feature, tag, platform, all_tests]):
-        # Bare `utf run` runs everything, like --all; keep explicit flag for clarity.
-        pass
 
     console.print(f"\n[bold]Universal Test Framework[/bold]\nVersion {__version__}\n")
     console.print("Loading configuration...")
@@ -160,7 +157,7 @@ def run(
 
     events = EventBus()
     ConsoleReporter(console, quiet=state.quiet).attach(events)
-    runner = TestRunner(config, events)
+    runner = TestRunner(app_config, events)
 
     try:
         selected = runner.select(filters)
@@ -189,7 +186,7 @@ def run(
                 severity=AlertSeverity.ERROR,
             )
         )
-        _write_preflight_report(config, result)
+        _write_preflight_report(app_config, result)
         raise typer.Exit(3)
 
     if result.results_dir:
