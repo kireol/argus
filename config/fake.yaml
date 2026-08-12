@@ -1,0 +1,62 @@
+# Demo configuration: runs the example test suite against fake adapters.
+# No hardware, emulator, or backend required. Run from the repository root:
+#
+#     utf run --config config/fake.yaml
+#
+# The fake backend holds state in memory; the fake devices *render* that
+# state into their screenshots, so image verification genuinely runs.
+
+backend:
+  type: fake
+  initial_state:
+    movieId: null
+
+devices:
+
+  fake_android:
+    type: fake
+    platform: android
+    screen_size: [1280, 720]
+    render: &render
+      background: "#101018"
+      state_image:
+        key: movieId
+        template: "movie_{value}.png"
+        search_dirs: [assets/images]
+        position: [100, 100]
+      state_text:
+        key: movieId
+        map:
+          "123": "Star Wars"
+          "456": "The Matrix"
+        position: [600, 120]
+        size: 48
+    instrumentation:
+      type: fake
+      status:
+        application: DemoApp
+        version: 1.0.0
+        ready: true
+        screen: movie_details
+        backend_connected: true
+        rendering: true
+        capabilities: [status, screen, state, rendering]
+
+  fake_yocto:
+    type: fake
+    platform: yocto
+    screen_size: [1920, 1080]
+    render: *render
+    instrumentation:
+      type: fake
+      status:
+        application: DemoApp
+        version: 1.0.0
+        ready: true
+        screen: movie_details
+        backend_connected: true
+        rendering: true
+        capabilities: [status, screen, state, rendering]
+
+results:
+  retain_on_success: false

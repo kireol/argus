@@ -1,0 +1,108 @@
+# Movie feature tests — the canonical examples from the specification.
+# These run against real devices or the fake adapters (config/fake.yaml).
+
+tests:
+
+  - id: MOV-001
+    name: Movie artwork appears
+    description: >
+      Verify that the correct movie artwork appears on screen
+      when the backend changes the selected movie.
+    feature: Movies
+    tags: [smoke, movies, visual]
+    platforms: [android, yocto]
+    parameters:
+      movie_id: 123
+      movie_image: movie_123.png
+    steps:
+      - action: backend.set
+        data:
+          movieId: ${movie_id}
+      - action: wait_until
+        condition:
+          type: image_present
+          image: ${movie_image}
+          threshold: 0.90
+        timeout: 10s
+      - action: verify
+        condition:
+          type: image_present
+          image: ${movie_image}
+          threshold: 0.90
+
+  - id: MOV-002
+    name: Movie title appears
+    description: >
+      Verify that the movie title text appears after
+      changing the selected movie. Requires OCR.
+    feature: Movies
+    tags: [movies, visual, ocr]
+    platforms: [android, yocto]
+    steps:
+      - action: backend.set
+        data:
+          movieId: 123
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Star Wars"
+        timeout: 10s
+
+  - id: MOV-003
+    name: Changing movies removes old artwork
+    description: >
+      Verify that the previous movie's artwork disappears
+      when the backend selects a different movie.
+    feature: Movies
+    tags: [movies, visual]
+    platforms: [android, yocto]
+    steps:
+      - action: backend.set
+        data:
+          movieId: 123
+      - action: wait_until
+        condition:
+          type: image_present
+          image: movie_123.png
+        timeout: 10s
+      - action: backend.set
+        data:
+          movieId: 456
+      - action: wait_until
+        condition:
+          type: image_not_present
+          image: movie_123.png
+        timeout: 10s
+      - action: verify
+        condition:
+          type: image_not_present
+          image: movie_123.png
+
+  - id: MOV-004
+    name: Changing movies shows new artwork
+    description: >
+      Verify that the new movie's artwork appears
+      when the backend selects a different movie.
+    feature: Movies
+    tags: [smoke, movies, visual]
+    platforms: [android, yocto]
+    steps:
+      - action: backend.set
+        data:
+          movieId: 123
+      - action: wait_until
+        condition:
+          type: image_present
+          image: movie_123.png
+        timeout: 10s
+      - action: backend.set
+        data:
+          movieId: 456
+      - action: wait_until
+        condition:
+          all:
+            - type: image_present
+              image: movie_456.png
+            - type: image_not_present
+              image: movie_123.png
+        timeout: 10s
