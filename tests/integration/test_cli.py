@@ -7,7 +7,7 @@ import yaml
 from tests.conftest import make_artwork
 from typer.testing import CliRunner
 
-from utf.cli.main import app
+from argus.cli.main import app
 
 pytestmark = pytest.mark.integration
 
@@ -84,7 +84,7 @@ def project(tmp_path: Path) -> Path:
 def test_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "utf" in result.output
+    assert "argus" in result.output
 
 
 def test_list(project):
@@ -150,12 +150,12 @@ def test_dry_run_executes_nothing(project, tmp_path):
 def test_init_creates_config(tmp_path, monkeypatch):
     target = tmp_path / "userconfig" / "config.yaml"
     monkeypatch.setattr(
-        "utf.cli.main.default_user_config_path", lambda: target
+        "argus.cli.main.default_user_config_path", lambda: target
     )
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0, result.output
     assert target.exists()
-    assert "utf validate" in result.output
+    assert "argus validate" in result.output
     # Second run refuses to overwrite without --force.
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 1

@@ -7,7 +7,7 @@ stays inside the adapter.
 ## The Device interface
 
 ```python
-from utf.adapters import Device, DeviceCapabilities
+from argus.adapters import Device, DeviceCapabilities
 
 class Device(ABC):
     # identity
@@ -84,7 +84,7 @@ See [plugin-development.md](plugin-development.md) for the full walkthrough.
 In short:
 
 ```python
-from utf.adapters import Device, DeviceCapabilities
+from argus.adapters import Device, DeviceCapabilities
 
 class RokuAdapter(Device):
     @classmethod
@@ -93,7 +93,7 @@ class RokuAdapter(Device):
     ...
 ```
 
-registered via the `utf.devices` entry point or `DeviceRegistry.register`,
+registered via the `argus.devices` entry point or `DeviceRegistry.register`,
 then configured with `type: roku`. The engine needs no changes.
 
 ## Lifetimes and pooling

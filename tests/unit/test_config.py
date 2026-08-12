@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from utf.config.loader import load_config
-from utf.exceptions import ConfigurationError
+from argus.config.loader import load_config
+from argus.exceptions import ConfigurationError
 
 
 def write_config(tmp_path: Path, content: str) -> Path:

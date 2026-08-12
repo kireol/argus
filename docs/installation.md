@@ -25,8 +25,8 @@ Open a **new terminal** afterwards (the installer adds a user-level launcher
 to your PATH), then:
 
 ```powershell
-utf --version
-utf validate --framework-only
+argus --version
+argus validate --framework-only
 ```
 
 ## macOS / Linux
@@ -38,11 +38,11 @@ cd universal-test-framework
 ```
 
 ```bash
-utf --version
-utf validate --framework-only
+argus --version
+argus validate --framework-only
 ```
 
-If `utf` is not found, add `~/.local/bin` to your PATH:
+If `argus` is not found, add `~/.local/bin` to your PATH:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
@@ -54,11 +54,11 @@ export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
 2. Creates a local virtual environment in `.venv/` inside the repository.
 3. Installs the framework and its dependencies from `pyproject.toml`
    (including the `yocto` and `ocr` extras).
-4. Installs a user-level `utf` launcher — no admin rights, no system PATH
+4. Installs a user-level `argus` launcher — no admin rights, no system PATH
    changes on macOS/Linux; user PATH only on Windows.
 5. Creates the `results/` directory.
-6. Runs a health check (`utf version`, `utf --help`,
-   `utf validate --framework-only`).
+6. Runs a health check (`argus version`, `argus --help`,
+   `argus validate --framework-only`).
 
 Running the installer again is safe: it upgrades the existing installation
 and never touches your configuration.
@@ -71,9 +71,9 @@ and never touches your configuration.
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | *(core)* | pydantic, PyYAML, httpx, OpenCV, Pillow, typer, rich | everything else |
-| `utf[yocto]` | paramiko | SSH/Yocto devices |
-| `utf[ocr]` | pytesseract | `text_present` / `text_not_present` (plus the `tesseract` binary) |
-| `utf[dev]` | pytest, ruff, mypy, pytest-httpserver | developing the framework |
+| `argus[yocto]` | paramiko | SSH/Yocto devices |
+| `argus[ocr]` | pytesseract | `text_present` / `text_not_present` (plus the `tesseract` binary) |
+| `argus[dev]` | pytest, ruff, mypy, pytest-httpserver | developing the framework |
 
 The installer includes `yocto` and `ocr` by default because they are small;
 the external binaries (`adb`, `tesseract`) remain optional and are only
@@ -82,7 +82,7 @@ checked when tests actually need them.
 ## First-run configuration
 
 ```bash
-utf init
+argus init
 ```
 
 creates a commented user configuration (location is platform-appropriate and
@@ -97,7 +97,7 @@ export BACKEND_TOKEN=...       # never committed, never logged
 Then check everything:
 
 ```bash
-utf validate
+argus validate
 ```
 
 ## Restricted / offline networks
@@ -116,10 +116,10 @@ The framework itself never calls external cloud services.
 
 ```bash
 git pull
-utf update
+argus update
 ```
 
-`utf update` reinstalls dependencies if they changed, re-runs framework
+`argus update` reinstalls dependencies if they changed, re-runs framework
 validation, and never modifies your user configuration.
 
 ## Uninstalling
@@ -129,10 +129,10 @@ Nothing is installed system-wide. To remove the framework:
 1. Delete the repository clone (this removes `.venv/` too).
    **Careful:** `results/` lives inside the repository — move it first if
    you want to keep test results.
-2. Delete the launcher: `~/.local/bin/utf` (macOS/Linux) or
-   `%LOCALAPPDATA%\utf\bin` (Windows).
+2. Delete the launcher: `~/.local/bin/argus` (macOS/Linux) or
+   `%LOCALAPPDATA%\argus\bin` (Windows).
 3. Optionally delete your user configuration directory (printed by
-   `utf init`) — keep it if you may reinstall later.
+   `argus init`) — keep it if you may reinstall later.
 
 ## Troubleshooting installation
 
@@ -143,7 +143,7 @@ re-run the installer; it prints the exact command for your platform.
 internal mirror (above), or ask IT for the corporate CA bundle and set
 `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`.
 
-**`utf` not found after install** — open a new terminal; if it persists,
+**`argus` not found after install** — open a new terminal; if it persists,
 check the PATH note the installer printed.
 
 More in [troubleshooting.md](troubleshooting.md).

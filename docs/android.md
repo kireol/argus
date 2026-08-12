@@ -59,8 +59,8 @@ with the detected serial list rather than guessing.
 ## Verifying the setup
 
 ```bash
-utf validate            # shows ADB, device, app, instrumentation, screenshot
-utf --dry-run
+argus validate            # shows ADB, device, app, instrumentation, screenshot
+argus --dry-run
 ```
 
 Typical issues are listed in [troubleshooting.md](troubleshooting.md).

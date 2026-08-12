@@ -4,9 +4,9 @@ import logging
 
 import pytest
 
-from utf.events.bus import EventBus
-from utf.events.events import TestRunStarted, TestStarted
-from utf.logging import get_logger, redact
+from argus.events.bus import EventBus
+from argus.events.events import TestRunStarted, TestStarted
+from argus.logging import get_logger, redact
 
 
 class TestEventBus:
@@ -66,26 +66,26 @@ class TestRedaction:
 class TestContextLogger:
     @pytest.fixture(autouse=True)
     def _propagate_to_caplog(self):
-        # configure_logging() disables propagation on the "utf" hierarchy;
+        # configure_logging() disables propagation on the "argus" hierarchy;
         # re-enable it so pytest's caplog handler (on the root logger) sees records.
-        utf_logger = logging.getLogger("utf")
+        utf_logger = logging.getLogger("argus")
         utf_logger.handlers.clear()
         utf_logger.propagate = True
         utf_logger.setLevel(logging.DEBUG)
         yield
 
     def test_context_attached_to_records(self, caplog):
-        logger = get_logger("utf.test", test_id="T-9", feature="Movies")
-        with caplog.at_level(logging.INFO, logger="utf.test"):
+        logger = get_logger("argus.test", test_id="T-9", feature="Movies")
+        with caplog.at_level(logging.INFO, logger="argus.test"):
             logger.info("hello")
         record = caplog.records[-1]
         assert record.test_id == "T-9"
         assert record.feature == "Movies"
 
     def test_bind_creates_derived_logger(self, caplog):
-        logger = get_logger("utf.test", test_id="T-9")
+        logger = get_logger("argus.test", test_id="T-9")
         bound = logger.bind(device="dev-1")
-        with caplog.at_level(logging.INFO, logger="utf.test"):
+        with caplog.at_level(logging.INFO, logger="argus.test"):
             bound.info("hi")
         record = caplog.records[-1]
         assert record.test_id == "T-9"

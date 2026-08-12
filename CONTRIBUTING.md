@@ -45,7 +45,7 @@ rejected regardless of how useful the feature is:
    OCR and screenshot providers register by name (or entry point); adding one
    must not modify the engine.
 5. **Every external operation has a timeout** and raises a specific
-   exception from `utf.exceptions` with actionable remediation text.
+   exception from `argus.exceptions` with actionable remediation text.
 6. **Secrets never reach logs or artifacts.** Use `${ENV_VAR}` configuration
    references; the logging layer redacts, but don't rely on it.
 

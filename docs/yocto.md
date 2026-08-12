@@ -54,7 +54,7 @@ The last row is worth highlighting: if your application implements the
 instrumentation `GET /test/screen` endpoint, screenshots work regardless of
 the display stack.
 
-New provider types (implementing `utf.adapters.ScreenshotProvider`) can be
+New provider types (implementing `argus.adapters.ScreenshotProvider`) can be
 added without modifying the adapter — see
 [plugin-development.md](plugin-development.md).
 
@@ -70,6 +70,6 @@ added without modifying the adapter — see
 ## Verifying the setup
 
 ```bash
-utf validate       # SSH, device health, app, screenshot, instrumentation
-utf --dry-run
+argus validate       # SSH, device health, app, screenshot, instrumentation
+argus --dry-run
 ```

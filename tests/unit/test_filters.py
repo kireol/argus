@@ -3,8 +3,8 @@
 import pytest
 from tests.conftest import make_test
 
-from utf.engine.filters import TestFilter, _evaluate_tag_expression
-from utf.exceptions import TestDefinitionError
+from argus.engine.filters import TestFilter, _evaluate_tag_expression
+from argus.exceptions import TestDefinitionError
 
 
 @pytest.fixture

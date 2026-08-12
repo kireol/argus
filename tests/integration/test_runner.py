@@ -6,12 +6,12 @@ import pytest
 import yaml
 from tests.conftest import make_artwork
 
-from utf.config.models import AppConfig
-from utf.engine.filters import TestFilter
-from utf.engine.runner import FailurePolicy, RunOptions, TestRunner
-from utf.events.bus import EventBus
-from utf.events.events import TestFailed, TestPassed
-from utf.models.results import RunStatus, TestStatus
+from argus.config.models import AppConfig
+from argus.engine.filters import TestFilter
+from argus.engine.runner import FailurePolicy, RunOptions, TestRunner
+from argus.events.bus import EventBus
+from argus.events.events import TestFailed, TestPassed
+from argus.models.results import RunStatus, TestStatus
 
 pytestmark = pytest.mark.integration
 

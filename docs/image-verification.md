@@ -96,7 +96,7 @@ region was searched.
 
 `text_present` / `text_not_present` run OCR (Tesseract by default) on the
 screenshot or a region of it. OCR is optional: install with
-`pip install "utf[ocr]"` plus the `tesseract` binary. Tests that don't use
+`pip install "argus[ocr]"` plus the `tesseract` binary. Tests that don't use
 text conditions never require it — preflight only checks OCR when a selected
 test needs it.
 

@@ -6,9 +6,9 @@ future changes are made knowingly.
 
 ## Naming
 
-- **Project: Argus; package/CLI: `utf`.** The spec mandates the `utf`
+- **Project: Argus; package/CLI: `argus`.** The spec mandates the `argus`
   command and suggests "universal-test-framework"; the repository carries
-  the product name Argus. All user-facing behavior uses `utf`.
+  the product name Argus. All user-facing behavior uses `argus`.
 
 ## Technology choices
 

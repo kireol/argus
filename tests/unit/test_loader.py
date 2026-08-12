@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from utf.engine.loader import load_tests
-from utf.exceptions import TestDefinitionError
+from argus.engine.loader import load_tests
+from argus.exceptions import TestDefinitionError
 
 VALID_TEST = """
 id: MOV-001

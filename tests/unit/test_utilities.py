@@ -2,9 +2,9 @@
 
 import pytest
 
-from utf.exceptions import ConfigurationError
-from utf.utilities.duration import format_duration, parse_duration
-from utf.utilities.variables import expand_variables
+from argus.exceptions import ConfigurationError
+from argus.utilities.duration import format_duration, parse_duration
+from argus.utilities.variables import expand_variables
 
 
 class TestParseDuration:

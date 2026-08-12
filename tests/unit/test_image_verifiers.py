@@ -3,13 +3,13 @@
 import pytest
 from tests.conftest import make_screen
 
-from utf.config.models import ImageVerificationConfig
-from utf.exceptions import AssetError, VerificationError
-from utf.models.common import Region
-from utf.models.observation import Observation
-from utf.verifiers.assets import AssetStore
-from utf.verifiers.base import Expectation
-from utf.verifiers.image import (
+from argus.config.models import ImageVerificationConfig
+from argus.exceptions import AssetError, VerificationError
+from argus.models.common import Region
+from argus.models.observation import Observation
+from argus.verifiers.assets import AssetStore
+from argus.verifiers.base import Expectation
+from argus.verifiers.image import (
     ImageAbsentVerifier,
     ImagePresentVerifier,
     ScreenshotMatchVerifier,
