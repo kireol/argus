@@ -1,0 +1,26 @@
+# Repository default configuration (safe to commit — no credentials).
+# User/environment-specific settings live in the user config (see `utf init`)
+# or come from environment variables.
+
+verification:
+  image:
+    default_threshold: 0.90
+    grayscale: false
+
+wait:
+  default_timeout: 10s
+  default_poll_interval: 250ms
+
+results:
+  dir: results
+  retain_on_success: false
+
+logging:
+  level: INFO
+  format: text
+
+test_paths:
+  - test_suites
+
+asset_paths:
+  - assets/images

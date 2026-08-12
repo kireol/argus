@@ -1,0 +1,43 @@
+# Example environment configuration.
+# Copy to your user config (see `utf init` for its location) or pass with
+# `utf run --config config/example.yaml`. Secrets come from the environment.
+
+backend:
+  base_url: ${BACKEND_URL}
+  token: ${BACKEND_TOKEN}
+
+devices:
+
+  android:
+    type: android
+    serial: ${ANDROID_SERIAL}
+    app_package: com.example.app
+    instrumentation:
+      base_url: http://127.0.0.1:8085
+
+  living_room:
+    type: yocto
+    host: ${YOCTO_HOST}
+    username: ${YOCTO_USER}
+    private_key: ${YOCTO_KEY}
+    screenshot:
+      command: "weston-screenshooter -f {path}"
+      remote_path: /tmp/utf_screenshot.png
+    app:
+      start: "systemctl start myapp"
+      stop: "systemctl stop myapp"
+      process: "myapp"
+    instrumentation:
+      base_url: http://${YOCTO_HOST}:8085
+
+regions:
+  movie_artwork:
+    x: 100
+    y: 100
+    width: 500
+    height: 400
+  movie_title:
+    x: 600
+    y: 100
+    width: 700
+    height: 100

@@ -1,0 +1,45 @@
+# Application instrumentation tests.
+
+tests:
+
+  - id: APP-001
+    name: Application reports ready
+    description: >
+      Verify that application instrumentation reports the
+      application as ready.
+    feature: Application
+    tags: [smoke, instrumentation]
+    platforms: [android, yocto]
+    steps:
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+
+  - id: APP-002
+    name: Application reports expected screen
+    description: >
+      Verify that the application reports the expected screen
+      through instrumentation.
+    feature: Application
+    tags: [instrumentation]
+    platforms: [android, yocto]
+    steps:
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: screen
+          equals: movie_details
+
+  - id: APP-003
+    name: Screenshot can be captured
+    description: >
+      Verify that a screenshot can be captured from the device
+      and saved as an artifact.
+    feature: Application
+    tags: [smoke, visual]
+    platforms: [android, yocto]
+    steps:
+      - action: screenshot
+        file: app_003_screen.png
