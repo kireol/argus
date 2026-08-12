@@ -25,39 +25,39 @@ class _VerifierCondition(Condition):
         self._expectation = expectation
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         if observation is None:
             observation = context.observe()
         return self._verifier.verify(observation, self._expectation)
 
 
-def _expectation_from(params: dict[str, Any], context: "TestContext") -> Expectation:
+def _expectation_from(params: dict[str, Any], context: TestContext) -> Expectation:
     params = dict(params)
     if "region" in params:
         params["region"] = resolve_region(params["region"], context.config.regions)
     return Expectation.model_validate(params)
 
 
-def _image_present(params: dict[str, Any], context: "TestContext") -> Condition:
+def _image_present(params: dict[str, Any], context: TestContext) -> Condition:
     return _VerifierCondition(context.verifiers.image_present, _expectation_from(params, context))
 
 
-def _image_absent(params: dict[str, Any], context: "TestContext") -> Condition:
+def _image_absent(params: dict[str, Any], context: TestContext) -> Condition:
     return _VerifierCondition(context.verifiers.image_absent, _expectation_from(params, context))
 
 
-def _screenshot_matches(params: dict[str, Any], context: "TestContext") -> Condition:
+def _screenshot_matches(params: dict[str, Any], context: TestContext) -> Condition:
     return _VerifierCondition(
         context.verifiers.screenshot_match, _expectation_from(params, context)
     )
 
 
-def _text_present(params: dict[str, Any], context: "TestContext") -> Condition:
+def _text_present(params: dict[str, Any], context: TestContext) -> Condition:
     return _VerifierCondition(context.verifiers.text_present, _expectation_from(params, context))
 
 
-def _text_absent(params: dict[str, Any], context: "TestContext") -> Condition:
+def _text_absent(params: dict[str, Any], context: TestContext) -> Condition:
     return _VerifierCondition(context.verifiers.text_absent, _expectation_from(params, context))
 
 
@@ -84,7 +84,7 @@ class _PixelMatchesCondition(Condition):
         self._tolerance = int(params.get("tolerance", 10))
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         if observation is None:
             observation = context.observe()
@@ -126,7 +126,7 @@ class _InstrumentationValueCondition(Condition):
         self._contains = params.get("contains")
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         status = context.require_instrumentation().status()
         actual = status.get(self._key)
@@ -150,7 +150,7 @@ class _ApplicationStateCondition(_InstrumentationValueCondition):
     name = "application_state"
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         state = context.require_instrumentation().state()
         actual: Any = state
@@ -186,7 +186,7 @@ class _BackendValueCondition(Condition):
         self._endpoint = params.get("endpoint")
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         state = context.require_backend().get_state(self._endpoint)
         actual: Any = state

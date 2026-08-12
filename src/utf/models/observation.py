@@ -20,10 +20,10 @@ if TYPE_CHECKING:
 class Observation:
     """A point-in-time capture of externally observable application state."""
 
-    image: "Image"
+    image: Image
     device: str
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
-    screen: "ScreenInfo | None" = None
+    screen: ScreenInfo | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property

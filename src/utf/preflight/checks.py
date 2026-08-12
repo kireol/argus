@@ -53,7 +53,7 @@ class PreflightCheck(ABC):
 
 
 class ConfigurationCheck(PreflightCheck):
-    def __init__(self, session: "RunSession") -> None:
+    def __init__(self, session: RunSession) -> None:
         self._session = session
 
     @property
@@ -72,7 +72,7 @@ class ConfigurationCheck(PreflightCheck):
 class TestAssetsCheck(PreflightCheck):
     """Every reference image used by the selected tests must exist."""
 
-    def __init__(self, session: "RunSession", tests: list[TestDefinition]) -> None:
+    def __init__(self, session: RunSession, tests: list[TestDefinition]) -> None:
         self._session = session
         self._tests = tests
 
@@ -102,7 +102,7 @@ class TestAssetsCheck(PreflightCheck):
 
 
 class BackendConnectivityCheck(PreflightCheck):
-    def __init__(self, session: "RunSession", *, required: bool) -> None:
+    def __init__(self, session: RunSession, *, required: bool) -> None:
         self._session = session
         self.required = required
         self.target = session.config.backend.base_url
@@ -142,7 +142,7 @@ class BackendConnectivityCheck(PreflightCheck):
 class DeviceCheck(PreflightCheck):
     """Connectivity + health for one configured device."""
 
-    def __init__(self, session: "RunSession", device_name: str, *, required: bool) -> None:
+    def __init__(self, session: RunSession, device_name: str, *, required: bool) -> None:
         self._session = session
         self._device_name = device_name
         self.required = required
@@ -175,7 +175,7 @@ class DeviceCheck(PreflightCheck):
 
 
 class DeviceScreenshotCheck(PreflightCheck):
-    def __init__(self, session: "RunSession", device_name: str, *, required: bool) -> None:
+    def __init__(self, session: RunSession, device_name: str, *, required: bool) -> None:
         self._session = session
         self._device_name = device_name
         self.required = required
@@ -210,7 +210,7 @@ class DeviceScreenshotCheck(PreflightCheck):
 
 
 class InstrumentationCheck(PreflightCheck):
-    def __init__(self, session: "RunSession", device_name: str, *, required: bool) -> None:
+    def __init__(self, session: RunSession, device_name: str, *, required: bool) -> None:
         self._session = session
         self._device_name = device_name
         self.required = required
@@ -266,7 +266,7 @@ class ImageSubsystemCheck(PreflightCheck):
 
 
 class OCRCheck(PreflightCheck):
-    def __init__(self, session: "RunSession", *, required: bool) -> None:
+    def __init__(self, session: RunSession, *, required: bool) -> None:
         self._session = session
         self.required = required
 
@@ -376,7 +376,7 @@ def uses_instrumentation(tests: list[TestDefinition]) -> bool:
 
 
 def build_preflight_checks(
-    session: "RunSession",
+    session: RunSession,
     tests: list[TestDefinition],
     device_names: list[str],
 ) -> list[PreflightCheck]:

@@ -56,7 +56,7 @@ class FakeDevice(Device):
         self.screenshot_count = 0
 
     @classmethod
-    def from_config(cls, name: str, config: DeviceConfig) -> "FakeDevice":
+    def from_config(cls, name: str, config: DeviceConfig) -> FakeDevice:
         options = config.options
         size = options.get("screen_size", [1280, 720])
         return cls(

@@ -34,13 +34,13 @@ if TYPE_CHECKING:
 class VerifierBundle:
     """Lazily-constructed verifier instances shared per session."""
 
-    assets: "AssetStore"
+    assets: AssetStore
     config: AppConfig
-    _ocr: "OCRProvider | None" = None
-    _cache: dict[str, "Verifier"] = field(default_factory=dict)
+    _ocr: OCRProvider | None = None
+    _cache: dict[str, Verifier] = field(default_factory=dict)
 
     @property
-    def ocr(self) -> "OCRProvider":
+    def ocr(self) -> OCRProvider:
         if self._ocr is None:
             from utf.ocr.base import create_ocr_provider
 
@@ -48,26 +48,26 @@ class VerifierBundle:
         return self._ocr
 
     @property
-    def image_present(self) -> "Verifier":
+    def image_present(self) -> Verifier:
         return self._get("image_present")
 
     @property
-    def image_absent(self) -> "Verifier":
+    def image_absent(self) -> Verifier:
         return self._get("image_absent")
 
     @property
-    def screenshot_match(self) -> "Verifier":
+    def screenshot_match(self) -> Verifier:
         return self._get("screenshot_match")
 
     @property
-    def text_present(self) -> "Verifier":
+    def text_present(self) -> Verifier:
         return self._get("text_present")
 
     @property
-    def text_absent(self) -> "Verifier":
+    def text_absent(self) -> Verifier:
         return self._get("text_absent")
 
-    def _get(self, name: str) -> "Verifier":
+    def _get(self, name: str) -> Verifier:
         verifier = self._cache.get(name)
         if verifier is not None:
             return verifier
@@ -106,7 +106,7 @@ class TestContext:
 
     config: AppConfig
     test: TestDefinition
-    conditions: "ConditionFactory"
+    conditions: ConditionFactory
     verifiers: VerifierBundle
     events: EventBus
     artifacts: TestArtifacts

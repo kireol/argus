@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from PIL.Image import Image
 
 from utf.config.models import ImageVerificationConfig
 from utf.exceptions import VerificationError
