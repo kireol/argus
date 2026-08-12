@@ -28,7 +28,7 @@ class ActionResult(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def ok(cls, message: str = "", **details: Any) -> "ActionResult":
+    def ok(cls, message: str = "", **details: Any) -> ActionResult:
         return cls(passed=True, message=message, details=details)
 
     @classmethod
@@ -39,7 +39,7 @@ class ActionResult(BaseModel):
         category: str | None = None,
         verification: VerificationResult | None = None,
         **details: Any,
-    ) -> "ActionResult":
+    ) -> ActionResult:
         return cls(
             passed=False,
             message=message,
@@ -55,7 +55,7 @@ class Action(ABC):
     name: str = "action"
 
     @abstractmethod
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         ...
 
     def require_param(self, params: dict[str, Any], key: str) -> Any:

@@ -121,7 +121,11 @@ class TestDefinition(BaseModel):
     @classmethod
     def _valid_timeout(cls, value: str | float | None) -> str | float | None:
         if value is not None:
-            parse_duration(value)
+            try:
+                parse_duration(value)
+            except Exception as exc:
+                # Re-raise as ValueError so pydantic reports it as a field error.
+                raise ValueError(str(exc)) from exc
         return value
 
     @property

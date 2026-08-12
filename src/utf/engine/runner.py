@@ -10,6 +10,7 @@ and publishes events on its bus throughout the run.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -390,7 +391,7 @@ class TestRunner:
         platform: str | None,
         result: TestResult,
         artifacts: ArtifactManager,
-        test_artifacts: "object",
+        test_artifacts: object,
         context: TestContext | None = None,
     ) -> TestResult:
         from utf.artifacts.manager import TestArtifacts
@@ -407,7 +408,7 @@ class TestRunner:
         return result
 
     def _save_failure_diagnostics(
-        self, context: TestContext, result: TestResult, artifacts: "object"
+        self, context: TestContext, result: TestResult, artifacts: object
     ) -> None:
         """On failure: screenshot, expected/diff images, logs, instrumentation."""
         from utf.artifacts.manager import TestArtifacts
@@ -436,10 +437,8 @@ class TestRunner:
                     artifacts.save_image("diff.png", diff_image(observation, reference))
 
             if context.device is not None and context.device.capabilities.supports_logs:
-                try:
+                with contextlib.suppress(UTFError):
                     artifacts.save_text("logs.txt", context.device.get_logs())
-                except UTFError:
-                    pass
 
             if context.instrumentation is not None:
                 try:

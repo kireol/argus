@@ -34,11 +34,10 @@ class TestFilter:
             return False
         if self.platforms and not any(p in test.platforms for p in self.platforms):
             return False
-        if self.tag_expression and not _evaluate_tag_expression(
-            self.tag_expression, set(test.tags)
-        ):
-            return False
-        return True
+        return not (
+            self.tag_expression
+            and not _evaluate_tag_expression(self.tag_expression, set(test.tags))
+        )
 
     def apply(self, tests: list[TestDefinition]) -> list[TestDefinition]:
         return [t for t in tests if self.matches(t)]

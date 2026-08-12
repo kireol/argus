@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -42,7 +42,7 @@ console = Console(highlight=False)
 
 
 class _CLIState:
-    config_file: Optional[Path] = None
+    config_file: Path | None = None
     log_level: str = "INFO"
     verbose: bool = False
     quiet: bool = False
@@ -74,7 +74,7 @@ def _configure_logging(config: AppConfig) -> None:
 def main(
     ctx: typer.Context,
     config: Annotated[
-        Optional[Path], typer.Option("--config", "-c", help="Configuration file.")
+        Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     log_level: Annotated[
         str, typer.Option("--log-level", help="DEBUG, INFO, WARNING, ERROR.")
@@ -108,20 +108,20 @@ def main(
 @app.command()
 def run(
     config: Annotated[
-        Optional[Path], typer.Option("--config", "-c", help="Configuration file.")
+        Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     test: Annotated[
-        Optional[list[str]], typer.Option("--test", "-t", help="Run specific test ID(s).")
+        list[str] | None, typer.Option("--test", "-t", help="Run specific test ID(s).")
     ] = None,
     feature: Annotated[
-        Optional[list[str]], typer.Option("--feature", "-f", help="Filter by feature.")
+        list[str] | None, typer.Option("--feature", "-f", help="Filter by feature.")
     ] = None,
     tag: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option("--tag", help='Filter by tag (or expression: "smoke and movies").'),
     ] = None,
     platform: Annotated[
-        Optional[list[str]], typer.Option("--platform", "-p", help="Filter by platform.")
+        list[str] | None, typer.Option("--platform", "-p", help="Filter by platform.")
     ] = None,
     all_tests: Annotated[bool, typer.Option("--all", help="Run every test.")] = False,
     stop_on_failure: Annotated[
@@ -132,7 +132,7 @@ def run(
         ),
     ] = True,
     max_failures: Annotated[
-        Optional[int], typer.Option("--max-failures", help="Stop after N failures.")
+        int | None, typer.Option("--max-failures", help="Stop after N failures.")
     ] = None,
     skip_preflight: Annotated[
         bool, typer.Option("--skip-preflight", help="Skip pre-flight checks (not recommended).")
@@ -202,10 +202,10 @@ def run(
 
 
 def _build_filter(
-    test: Optional[list[str]],
-    feature: Optional[list[str]],
-    tag: Optional[list[str]],
-    platform: Optional[list[str]],
+    test: list[str] | None,
+    feature: list[str] | None,
+    tag: list[str] | None,
+    platform: list[str] | None,
 ) -> TestFilter:
     tags: list[str] = []
     tag_expression: str | None = None
@@ -242,7 +242,7 @@ def _write_preflight_report(config: AppConfig, result) -> None:
 @app.command()
 def validate(
     config: Annotated[
-        Optional[Path], typer.Option("--config", "-c", help="Configuration file.")
+        Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     framework_only: Annotated[
         bool,
@@ -316,13 +316,13 @@ def _dry_run() -> None:
 @app.command("list")
 def list_tests(
     config: Annotated[
-        Optional[Path], typer.Option("--config", "-c", help="Configuration file.")
+        Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     feature: Annotated[
-        Optional[list[str]], typer.Option("--feature", "-f")
+        list[str] | None, typer.Option("--feature", "-f")
     ] = None,
-    tag: Annotated[Optional[list[str]], typer.Option("--tag")] = None,
-    platform: Annotated[Optional[list[str]], typer.Option("--platform", "-p")] = None,
+    tag: Annotated[list[str] | None, typer.Option("--tag")] = None,
+    platform: Annotated[list[str] | None, typer.Option("--platform", "-p")] = None,
 ) -> None:
     """List tests grouped by feature."""
     if config is not None:

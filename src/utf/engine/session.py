@@ -74,7 +74,8 @@ class RunSession:
         if device_config is None:
             raise ConfigurationError(
                 f"Unknown device {name!r}.",
-                remediation=f"Configured devices: {', '.join(sorted(self.config.devices)) or '<none>'}.",
+                remediation="Configured devices: "
+                f"{', '.join(sorted(self.config.devices)) or '<none>'}.",
             )
         device = self._device_registry.create(name, device_config)
         device.connect()
@@ -144,7 +145,7 @@ class RunSession:
             self._backend.close()
             self._backend = None
 
-    def __enter__(self) -> "RunSession":
+    def __enter__(self) -> RunSession:
         return self
 
     def __exit__(self, *exc_info: object) -> None:

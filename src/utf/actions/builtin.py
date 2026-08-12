@@ -27,7 +27,7 @@ class _BackendRequestAction(Action):
         self.name = name
         self._method = method
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         endpoint = self.require_param(params, "endpoint")
         kwargs: dict[str, Any] = {}
         if "data" in params:
@@ -64,7 +64,7 @@ class _BackendSetAction(Action):
 
     name = "backend.set"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         data = self.require_param(params, "data")
         endpoint = params.get("endpoint")
         try:
@@ -82,7 +82,7 @@ class _DeviceLifecycleAction(Action):
         self.name = name
         self._operation = operation
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         device = context.require_device()
         try:
             getattr(device, self._operation)()
@@ -94,7 +94,7 @@ class _DeviceLifecycleAction(Action):
 class _DeviceTapAction(Action):
     name = "device.tap"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         x = int(self.require_param(params, "x"))
         y = int(self.require_param(params, "y"))
         device = context.require_device()
@@ -108,7 +108,7 @@ class _DeviceTapAction(Action):
 class _DeviceSwipeAction(Action):
     name = "device.swipe"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         x1 = int(self.require_param(params, "from_x"))
         y1 = int(self.require_param(params, "from_y"))
         x2 = int(self.require_param(params, "to_x"))
@@ -125,7 +125,7 @@ class _DeviceSwipeAction(Action):
 class _DeviceKeyAction(Action):
     name = "device.key"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         key = str(self.require_param(params, "key"))
         device = context.require_device()
         try:
@@ -143,7 +143,7 @@ class _WaitAction(Action):
 
     name = "wait"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         seconds = parse_duration(self.require_param(params, "duration"))
         context.logger.warning(
             "Fixed 'wait' of %.2fs used — prefer 'wait_until' with a condition", seconds
@@ -155,7 +155,7 @@ class _WaitAction(Action):
 class _WaitUntilAction(Action):
     name = "wait_until"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         from utf.engine.wait import wait_until
 
         spec = ConditionSpec.model_validate(self.require_param(params, "condition"))
@@ -185,7 +185,7 @@ class _VerifyAction(Action):
 
     name = "verify"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         spec = ConditionSpec.model_validate(self.require_param(params, "condition"))
         condition = context.conditions.build(spec, context)
         observation = context.observe() if condition.needs_observation else None
@@ -203,7 +203,7 @@ class _VerifyAction(Action):
 class _ScreenshotAction(Action):
     name = "screenshot"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         try:
             observation = context.observe()
         except ScreenshotError as exc:
@@ -218,7 +218,7 @@ class _ScreenshotAction(Action):
 class _LogAction(Action):
     name = "log"
 
-    def execute(self, context: "TestContext", params: dict[str, Any]) -> ActionResult:
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         message = str(self.require_param(params, "message"))
         context.logger.info(message)
         return ActionResult.ok(message)

@@ -34,7 +34,7 @@ class Condition(ABC):
 
     @abstractmethod
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         ...
 
@@ -50,7 +50,7 @@ class _AllCondition(Condition):
         self.needs_observation = any(c.needs_observation for c in children)
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         results = [c.evaluate(context, observation) for c in self.children]
         passed = all(r.passed for r in results)
@@ -76,7 +76,7 @@ class _AnyCondition(Condition):
         self.needs_observation = any(c.needs_observation for c in children)
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         results = [c.evaluate(context, observation) for c in self.children]
         passed = any(r.passed for r in results)
@@ -101,7 +101,7 @@ class _NotCondition(Condition):
         self.needs_observation = child.needs_observation
 
     def evaluate(
-        self, context: "TestContext", observation: Observation | None
+        self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
         result = self.child.evaluate(context, observation)
         return VerificationResult(
@@ -127,7 +127,7 @@ class ConditionFactory:
     def types(self) -> list[str]:
         return sorted(self._builders)
 
-    def build(self, spec: ConditionSpec, context: "TestContext") -> Condition:
+    def build(self, spec: ConditionSpec, context: TestContext) -> Condition:
         if spec.all is not None:
             return _AllCondition([self.build(child, context) for child in spec.all])
         if spec.any is not None:

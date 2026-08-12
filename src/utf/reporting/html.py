@@ -61,7 +61,7 @@ def write_html_report(result: RunResult, path: Path) -> Path:
             if test.artifact_dir:
                 detail_parts.append(f"artifacts: {html.escape(test.artifact_dir)}")
             rows.append(
-                f'<tr class="detail"><td></td><td colspan="5">'
+                '<tr class="detail"><td></td><td colspan="5">'
                 + "<br>".join(detail_parts)
                 + "</td></tr>"
             )

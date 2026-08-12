@@ -213,7 +213,7 @@ class YoctoAdapter(Device):
         self._log = get_logger("utf.yocto", device=name)
 
     @classmethod
-    def from_config(cls, name: str, config: DeviceConfig) -> "YoctoAdapter":
+    def from_config(cls, name: str, config: DeviceConfig) -> YoctoAdapter:
         options: dict[str, Any] = config.options
         host = options.get("host")
         if not host or "${" in str(host):
@@ -323,8 +323,9 @@ class YoctoAdapter(Device):
 
     def is_application_running(self) -> bool:
         process = self._require(self._app_process, "process")
+        quoted = shlex.quote(process)
         exit_code, _, _ = self._transport.execute(
-            f"pidof {shlex.quote(process)} >/dev/null 2>&1 || pgrep -f {shlex.quote(process)} >/dev/null"
+            f"pidof {quoted} >/dev/null 2>&1 || pgrep -f {quoted} >/dev/null"
         )
         return exit_code == 0
 
@@ -355,7 +356,9 @@ class YoctoAdapter(Device):
         )
 
     def get_logs(self, lines: int = 200) -> str:
-        command = self._log_command or f"journalctl -n {lines} --no-pager 2>/dev/null || dmesg | tail -n {lines}"
+        command = self._log_command or (
+            f"journalctl -n {lines} --no-pager 2>/dev/null || dmesg | tail -n {lines}"
+        )
         _, output, _ = self._transport.execute(command)
         return str(output)
 

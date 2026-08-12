@@ -67,6 +67,10 @@ addopts = "-q"
 markers = [
     "integration: integration tests (may be slower)",
 ]
+filterwarnings = [
+    # Production classes named Test* (TestDefinition, TestFilter...) are not test classes.
+    "ignore::pytest.PytestCollectionWarning",
+]
 
 [tool.ruff]
 line-length = 100

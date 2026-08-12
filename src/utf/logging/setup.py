@@ -25,7 +25,7 @@ _CONTEXT_FIELDS = (
 )
 
 _SECRET_PATTERNS = [
-    re.compile(r"(?i)(authorization\s*[:=]\s*)(\S+)"),
+    re.compile(r"(?i)(authorization\s*[:=]\s*)([^\n]+)"),
     re.compile(r"(?i)(bearer\s+)(\S+)"),
     re.compile(r"(?i)((?:token|password|secret|api[_-]?key|private[_-]?key)\s*[:=]\s*)(\S+)"),
 ]
@@ -86,7 +86,7 @@ class ContextLogger(logging.LoggerAdapter):
             extra.setdefault(key, value)
         return msg, kwargs
 
-    def bind(self, **context: Any) -> "ContextLogger":
+    def bind(self, **context: Any) -> ContextLogger:
         merged = {**(self.extra or {}), **context}
         return ContextLogger(self.logger, merged)
 

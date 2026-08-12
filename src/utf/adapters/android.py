@@ -50,7 +50,7 @@ class AndroidAdapter(Device):
         self._log = get_logger("utf.android", device=name)
 
     @classmethod
-    def from_config(cls, name: str, config: DeviceConfig) -> "AndroidAdapter":
+    def from_config(cls, name: str, config: DeviceConfig) -> AndroidAdapter:
         options: dict[str, Any] = config.options
         return cls(
             name,

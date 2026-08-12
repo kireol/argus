@@ -74,7 +74,7 @@ class ConsoleReporter:
                 self.console.print(f"\nPre-flight complete: {passed} passed\n")
             return
 
-        self.console.print(f"\n[bold red]PRE-FLIGHT FAILED[/bold red]\n")
+        self.console.print("\n[bold red]PRE-FLIGHT FAILED[/bold red]\n")
         for result in failed:
             self.console.print(f"[red]✗ {result.name}[/red]\n")
             if result.target:
@@ -144,7 +144,9 @@ class ConsoleReporter:
             return
         self.console.print()
         if result.stopped_early:
-            self.console.print(f"[bold yellow]TEST RUN STOPPED[/bold yellow] ({result.stop_reason})")
+            self.console.print(
+                f"[bold yellow]TEST RUN STOPPED[/bold yellow] ({result.stop_reason})"
+            )
         elif result.status == RunStatus.PASSED:
             self.console.print("[bold green]TEST RUN PASSED[/bold green]")
         else:
