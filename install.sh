@@ -120,14 +120,15 @@ say ""
 say "────────────────────────────────────"
 printf '\033[32mINSTALLATION COMPLETE\033[0m\n'
 say ""
-if ! command -v argus >/dev/null || [[ "$(command -v argus)" != "$BIN_DIR/argus" && "$(command -v argus)" != "$VENV_DIR/bin/argus" ]]; then
-    if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-        warn "$BIN_DIR is not on your PATH."
-        say  "  Add this line to your shell profile (e.g. ~/.zshrc), then open a new terminal:"
-        say  "      export PATH=\"\$HOME/.local/bin:\$PATH\""
-        say ""
-    fi
+say "The argus command is installed at: $BIN_DIR/argus"
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    warn "$BIN_DIR is not on your PATH — the 'argus' command will not be found."
+    say  "  Add this line to your shell profile (e.g. ~/.zshrc), then open a new terminal:"
+    say  "      export PATH=\"$BIN_DIR:\$PATH\""
+else
+    say "$BIN_DIR is already on your PATH — you are ready to go."
 fi
+say ""
 say "Next steps:"
 say "    argus init        # create your configuration"
 say "    argus validate    # check your environment"
