@@ -205,13 +205,14 @@ def _backend_section(config: AppConfig) -> ValidationSection:
         config.backend.base_url or f"type: {config.backend.type}",
     )
     try:
+        from utf.adapters.backend import BackendAdapter
+
+        adapter: BackendAdapter
         if config.backend.type == "fake":
             from utf.adapters.fake import FakeBackend
 
             adapter = FakeBackend(config.backend.initial_state)
         else:
-            from utf.adapters.backend import BackendAdapter
-
             adapter = BackendAdapter(config.backend)
         try:
             health = adapter.health_check()

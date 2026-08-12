@@ -128,6 +128,7 @@ class _InstrumentationValueCondition(Condition):
     def evaluate(
         self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
+        assert self._key is not None  # guaranteed by __init__
         status = context.require_instrumentation().status()
         actual = status.get(self._key)
         if self._contains is not None:
@@ -188,6 +189,7 @@ class _BackendValueCondition(Condition):
     def evaluate(
         self, context: TestContext, observation: Observation | None
     ) -> VerificationResult:
+        assert self._key is not None  # guaranteed by __init__
         state = context.require_backend().get_state(self._endpoint)
         actual: Any = state
         for part in self._key.split("."):
