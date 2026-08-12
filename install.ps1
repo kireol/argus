@@ -2,7 +2,7 @@
 #
 # Usage:
 #   .\install.ps1          # standard installation
-#   .\install.ps1 -Dev     # development installation (utf[dev])
+#   .\install.ps1 -Dev     # development installation (argus[dev])
 #
 # Safe to run repeatedly: an existing installation is upgraded in place.
 # Requires no administrator privileges. Never modifies user configuration.
@@ -100,10 +100,10 @@ if ($Uv) {
 Write-Ok "Framework and dependencies installed (extras: $Extras)"
 
 # ------------------------------------------------------- launcher (user-level)
-$BinDir = Join-Path $env:LOCALAPPDATA "utf\bin"
+$BinDir = Join-Path $env:LOCALAPPDATA "argus\bin"
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-$UtfExe = Join-Path $VenvDir "Scripts\utf.exe"
-$Launcher = Join-Path $BinDir "utf.cmd"
+$UtfExe = Join-Path $VenvDir "Scripts\argus.exe"
+$Launcher = Join-Path $BinDir "argus.cmd"
 "@echo off`r`n`"$UtfExe`" %*" | Set-Content -Path $Launcher -Encoding ASCII
 Write-Ok "Launcher installed: $Launcher"
 
@@ -111,7 +111,7 @@ Write-Ok "Launcher installed: $Launcher"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$userPath;$BinDir", "User")
-    Write-Warn "Added $BinDir to your user PATH. Open a NEW terminal to use 'utf'."
+    Write-Warn "Added $BinDir to your user PATH. Open a NEW terminal to use 'argus'."
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "results") | Out-Null
@@ -121,14 +121,14 @@ Write-Ok "Result directory ready"
 Write-Host ""
 Write-Host "Validating installation..."
 & $UtfExe version | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail "The utf command does not run." }
+if ($LASTEXITCODE -ne 0) { Fail "The argus command does not run." }
 & $UtfExe --help | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail "The utf command does not run." }
+if ($LASTEXITCODE -ne 0) { Fail "The argus command does not run." }
 & $UtfExe validate --framework-only | Out-Null
 if ($LASTEXITCODE -eq 0) {
     Write-Ok "Framework validation passed"
 } else {
-    Write-Warn "Framework validation reported issues - run 'utf validate --framework-only' for details."
+    Write-Warn "Framework validation reported issues - run 'argus validate --framework-only' for details."
 }
 
 # --------------------------------------------------------------------- summary
@@ -137,7 +137,7 @@ Write-Host "------------------------------------"
 Write-Host "INSTALLATION COMPLETE" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps (in a new terminal):"
-Write-Host "    utf init        # create your configuration"
-Write-Host "    utf validate    # check your environment"
-Write-Host "    utf run --config config\fake.yaml    # demo run (no hardware needed)"
+Write-Host "    argus init        # create your configuration"
+Write-Host "    argus validate    # check your environment"
+Write-Host "    argus run --config config\fake.yaml    # demo run (no hardware needed)"
 Write-Host ""

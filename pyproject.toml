@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "utf"
+name = "argus"
 version = "0.1.0"
 description = "Argus — Universal Cross-Platform Application Functional & Visual Testing Framework"
 readme = "README.md"
@@ -44,22 +44,22 @@ dev = [
     "types-PyYAML",
     "types-paramiko",
 ]
-all = ["utf[yocto,ocr]"]
+all = ["argus[yocto,ocr]"]
 
 [project.scripts]
-utf = "utf.cli.main:app"
+argus = "argus.cli.main:app"
 
-[project.entry-points."utf.actions"]
-builtin = "utf.actions.builtin:register"
+[project.entry-points."argus.actions"]
+builtin = "argus.actions.builtin:register"
 
-[project.entry-points."utf.conditions"]
-builtin = "utf.conditions.builtin:register"
+[project.entry-points."argus.conditions"]
+builtin = "argus.conditions.builtin:register"
 
-[project.entry-points."utf.devices"]
-builtin = "utf.adapters.registry:register_builtin_devices"
+[project.entry-points."argus.devices"]
+builtin = "argus.adapters.registry:register_builtin_devices"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/utf"]
+packages = ["src/argus"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

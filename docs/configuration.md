@@ -4,7 +4,7 @@ Configuration is layered; later layers override earlier ones:
 
 1. Built-in defaults
 2. Repository `config/default.yaml` (committed, no secrets)
-3. Your user configuration (`utf init` creates it; path is platform-specific)
+3. Your user configuration (`argus init` creates it; path is platform-specific)
 4. An explicit `--config file.yaml`
 
 Values merge deeply, so a layer only needs the keys it changes.
@@ -21,7 +21,7 @@ backend:
 ```
 
 An unresolved `${...}` doesn't crash the framework — the component is
-reported as *not configured* by `utf validate` and only fails if a selected
+reported as *not configured* by `argus validate` and only fails if a selected
 test actually needs it. Tokens and keys are redacted from logs and never
 written to artifacts.
 
@@ -106,6 +106,6 @@ and environment variables. `.gitignore` already excludes `results/` and
 ## Checking your configuration
 
 ```bash
-utf validate            # full environment, section by section
-utf --dry-run           # everything a real run would touch, executes nothing
+argus validate            # full environment, section by section
+argus --dry-run           # everything a real run would touch, executes nothing
 ```

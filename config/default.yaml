@@ -1,5 +1,5 @@
 # Repository default configuration (safe to commit — no credentials).
-# User/environment-specific settings live in the user config (see `utf init`)
+# User/environment-specific settings live in the user config (see `argus init`)
 # or come from environment variables.
 
 verification:

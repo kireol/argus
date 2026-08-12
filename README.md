@@ -1,4 +1,4 @@
-# Argus — Universal Test Framework (`utf`)
+# Argus — Universal Test Framework (`argus`)
 
 A cross-platform functional and **visual** testing framework for applications
 that have no UI automation hooks. Argus drives your backend into a known
@@ -41,28 +41,28 @@ macOS/Linux:
     ./install.sh
 
 Then:
-    utf validate
-    utf run --tag smoke
+    argus validate
+    argus run --tag smoke
 ```
 
 No hardware yet? Run the example suite against the built-in fake devices:
 
 ```bash
-utf run --config config/fake.yaml
+argus run --config config/fake.yaml
 ```
 
 ## Everyday commands
 
 ```bash
-utf init                        # create your user configuration
-utf validate                    # full environment diagnosis
-utf validate --framework-only   # installation check (no devices needed)
-utf --dry-run                   # validate everything a run would use, execute nothing
-utf list --feature movies       # browse tests
-utf run --feature movies        # run a feature
-utf run --platform android      # run one platform
-utf run --tag smoke --continue-on-failure
-utf run --max-failures 5
+argus init                        # create your user configuration
+argus validate                    # full environment diagnosis
+argus validate --framework-only   # installation check (no devices needed)
+argus --dry-run                   # validate everything a run would use, execute nothing
+argus list --feature movies       # browse tests
+argus run --feature movies        # run a feature
+argus run --platform android      # run one platform
+argus run --tag smoke --continue-on-failure
+argus run --max-failures 5
 ```
 
 Every run writes artifacts and reports under `results/<timestamp>/`:
@@ -120,7 +120,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 git pull
-utf update    # reinstalls dependencies, preserves your configuration, revalidates
+argus update    # reinstalls dependencies, preserves your configuration, revalidates
 ```
 
 ## License

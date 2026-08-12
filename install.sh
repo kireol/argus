@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./install.sh            # standard installation
-#   ./install.sh --dev      # development installation (utf[dev])
+#   ./install.sh --dev      # development installation (argus[dev])
 #
 # Safe to run repeatedly: an existing installation is upgraded in place.
 # Requires no administrator privileges. Never modifies user configuration.
@@ -93,12 +93,12 @@ ok "Framework and dependencies installed (extras: ${EXTRAS})"
 
 # ------------------------------------------------------------- launcher command
 mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/utf" <<EOF
+cat > "$BIN_DIR/argus" <<EOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/utf" "\$@"
+exec "$VENV_DIR/bin/argus" "\$@"
 EOF
-chmod +x "$BIN_DIR/utf"
-ok "Launcher installed: $BIN_DIR/utf"
+chmod +x "$BIN_DIR/argus"
+ok "Launcher installed: $BIN_DIR/argus"
 
 # ----------------------------------------------------------------- directories
 mkdir -p "$REPO_ROOT/results"
@@ -107,12 +107,12 @@ ok "Result directory ready"
 # ----------------------------------------------------------------- health check
 say ""
 say "Validating installation..."
-"$VENV_DIR/bin/utf" version >/dev/null || die "The utf command does not run."
-"$VENV_DIR/bin/utf" --help >/dev/null || die "The utf command does not run."
-if "$VENV_DIR/bin/utf" validate --framework-only >/dev/null 2>&1; then
+"$VENV_DIR/bin/argus" version >/dev/null || die "The argus command does not run."
+"$VENV_DIR/bin/argus" --help >/dev/null || die "The argus command does not run."
+if "$VENV_DIR/bin/argus" validate --framework-only >/dev/null 2>&1; then
     ok "Framework validation passed"
 else
-    warn "Framework validation reported issues — run 'utf validate --framework-only' for details."
+    warn "Framework validation reported issues — run 'argus validate --framework-only' for details."
 fi
 
 # ----------------------------------------------------------------------- summary
@@ -120,7 +120,7 @@ say ""
 say "────────────────────────────────────"
 printf '\033[32mINSTALLATION COMPLETE\033[0m\n'
 say ""
-if ! command -v utf >/dev/null || [[ "$(command -v utf)" != "$BIN_DIR/utf" && "$(command -v utf)" != "$VENV_DIR/bin/utf" ]]; then
+if ! command -v argus >/dev/null || [[ "$(command -v argus)" != "$BIN_DIR/argus" && "$(command -v argus)" != "$VENV_DIR/bin/argus" ]]; then
     if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
         warn "$BIN_DIR is not on your PATH."
         say  "  Add this line to your shell profile (e.g. ~/.zshrc), then open a new terminal:"
@@ -129,7 +129,7 @@ if ! command -v utf >/dev/null || [[ "$(command -v utf)" != "$BIN_DIR/utf" && "$
     fi
 fi
 say "Next steps:"
-say "    utf init        # create your configuration"
-say "    utf validate    # check your environment"
-say "    utf run --config config/fake.yaml    # demo run (no hardware needed)"
+say "    argus init        # create your configuration"
+say "    argus validate    # check your environment"
+say "    argus run --config config/fake.yaml    # demo run (no hardware needed)"
 say ""

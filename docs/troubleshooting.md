@@ -3,8 +3,8 @@
 First stop, always:
 
 ```bash
-utf validate          # what exactly is broken, with remediation hints
-utf --dry-run         # would a run work, without touching anything
+argus validate          # what exactly is broken, with remediation hints
+argus --dry-run         # would a run work, without touching anything
 ```
 
 Every framework error carries a `Remediation:` line — read it before
@@ -16,9 +16,9 @@ anything else. Add `--verbose` for DEBUG logs.
 Install Python 3.12+ (or [uv](https://docs.astral.sh/uv/), which the
 installer will use to provision Python itself) and re-run the installer.
 
-**`utf: command not found` after installing**
+**`argus: command not found` after installing**
 Open a new terminal. Still missing → macOS/Linux: ensure `~/.local/bin` is
-on PATH; Windows: the installer added `%LOCALAPPDATA%\utf\bin` to your user
+on PATH; Windows: the installer added `%LOCALAPPDATA%\argus\bin` to your user
 PATH — a new terminal is required.
 
 **Package downloads fail (corporate network)**
@@ -33,7 +33,7 @@ filename in the test (variables are expanded using the test's
 `parameters`).
 
 **`✗ Backend API`**
-`backend.base_url` unset (`utf validate` shows *not configured*), backend
+`backend.base_url` unset (`argus validate` shows *not configured*), backend
 down, or TLS/auth problem. Try the health endpoint manually:
 `curl -i "$BACKEND_URL/health"`.
 
@@ -54,7 +54,7 @@ lab devices.
 
 **`⚠ OCR unavailable`**
 Only matters for tests using `text_present`/`text_not_present`. Install
-`pip install "utf[ocr]"` plus the `tesseract` binary
+`pip install "argus[ocr]"` plus the `tesseract` binary
 (`brew install tesseract` / `apt install tesseract-ocr`).
 
 ## Test failures
@@ -86,7 +86,7 @@ disagree. The bug is in the application's rendering path; the
 **Everything times out on one device**
 Device connections are reused per run; a device that hung mid-run fails
 fast with `DeviceConnectionError`. Power-cycle it and check
-`utf validate`.
+`argus validate`.
 
 ## Where things are
 
@@ -95,7 +95,7 @@ fast with `DeviceConnectionError`. Power-cycle it and check
 | Run reports | `results/<timestamp>/report.{json,html}`, `junit.xml` |
 | Failure artifacts | `results/<timestamp>/<TEST-ID>_<platform>/` |
 | Preflight report (on failure) | `results/<timestamp>/preflight.json` |
-| User configuration | printed by `utf init` |
+| User configuration | printed by `argus init` |
 
 ## Still stuck
 
@@ -103,5 +103,5 @@ Run with maximum context and file an issue with the output plus the
 failure's artifact directory:
 
 ```bash
-utf run --test THE-TEST --verbose --log-level DEBUG
+argus run --test THE-TEST --verbose --log-level DEBUG
 ```

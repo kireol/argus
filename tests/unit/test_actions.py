@@ -3,9 +3,9 @@
 import pytest
 from tests.conftest import make_context, make_screen
 
-from utf.actions.base import ActionRegistry
-from utf.adapters.fake import FakeBackend, FakeDevice
-from utf.exceptions import ActionError
+from argus.actions.base import ActionRegistry
+from argus.adapters.fake import FakeBackend, FakeDevice
+from argus.exceptions import ActionError
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ def test_screenshot_saves_artifact(registry, context, tmp_path):
 
 def test_actions_without_device_fail_cleanly(registry, base_config):
     context = make_context(base_config, device=None)
-    from utf.exceptions import TestExecutionError
+    from argus.exceptions import TestExecutionError
 
     with pytest.raises(TestExecutionError, match="needs a device"):
         registry.get("device.tap").execute(context, {"x": 1, "y": 1})
@@ -118,7 +118,7 @@ def test_actions_without_device_fail_cleanly(registry, base_config):
 
 def test_actions_without_backend_fail_cleanly(registry, base_config):
     context = make_context(base_config, backend=None)
-    from utf.exceptions import TestExecutionError
+    from argus.exceptions import TestExecutionError
 
     with pytest.raises(TestExecutionError, match="backend"):
         registry.get("backend.set").execute(context, {"data": {}})

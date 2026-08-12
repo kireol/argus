@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from utf.config.models import AppConfig
-from utf.models.test_definition import TestDefinition
+from argus.config.models import AppConfig
+from argus.models.test_definition import TestDefinition
 
 
 def make_artwork(base: tuple[int, int, int], accent: tuple[int, int, int]) -> Image.Image:
@@ -83,12 +83,12 @@ def make_context(
     artifact_dir: Path | None = None,
 ):
     """Build a TestContext wired with fakes for unit tests."""
-    from utf.artifacts.manager import TestArtifacts
-    from utf.conditions.base import ConditionFactory
-    from utf.conditions.builtin import register as register_conditions
-    from utf.engine.context import TestContext, VerifierBundle
-    from utf.events.bus import EventBus
-    from utf.verifiers.assets import AssetStore
+    from argus.artifacts.manager import TestArtifacts
+    from argus.conditions.base import ConditionFactory
+    from argus.conditions.builtin import register as register_conditions
+    from argus.engine.context import TestContext, VerifierBundle
+    from argus.events.bus import EventBus
+    from argus.verifiers.assets import AssetStore
 
     test = test or make_test()
     assets = AssetStore([Path(p) for p in config.asset_paths])

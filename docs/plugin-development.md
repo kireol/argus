@@ -9,10 +9,10 @@ them programmatically or through Python entry points.
 Declare in your plugin package's `pyproject.toml`:
 
 ```toml
-[project.entry-points."utf.actions"]
+[project.entry-points."argus.actions"]
 myplugin = "myplugin.actions:register"
 
-[project.entry-points."utf.devices"]
+[project.entry-points."argus.devices"]
 myplugin = "myplugin.devices:register"
 ```
 
@@ -24,7 +24,7 @@ installed plugins automatically.
 ```python
 # myplugin/actions.py
 from typing import Any
-from utf.actions import Action, ActionRegistry, ActionResult
+from argus.actions import Action, ActionRegistry, ActionResult
 
 class ClearCacheAction(Action):
     name = "device.clear_cache"
@@ -55,8 +55,8 @@ raise `ActionError` only for authoring mistakes (missing parameters —
 
 ```python
 # myplugin/conditions.py
-from utf.conditions import Condition, ConditionFactory
-from utf.models.results import VerificationResult
+from argus.conditions import Condition, ConditionFactory
+from argus.models.results import VerificationResult
 
 class BatteryAboveCondition(Condition):
     name = "battery_above"
@@ -92,8 +92,8 @@ composites stay one-capture-per-poll.
 
 ```python
 # myplugin/devices.py
-from utf.adapters import Device, DeviceCapabilities
-from utf.adapters.registry import DeviceRegistry
+from argus.adapters import Device, DeviceCapabilities
+from argus.adapters.registry import DeviceRegistry
 
 class RokuAdapter(Device):
     @classmethod
@@ -125,13 +125,13 @@ timeout; raise `DeviceConnectionError`/`ScreenshotError` (never bare
 
 ## A new OCR provider
 
-Implement `utf.ocr.OCRProvider` (`extract_text`, `is_available`) and extend
+Implement `argus.ocr.OCRProvider` (`extract_text`, `is_available`) and extend
 `create_ocr_provider`, or ship it in your plugin and select it with
 `ocr.provider: myocr`.
 
 ## A new screenshot provider (Yocto)
 
-Implement `utf.adapters.ScreenshotProvider.capture()` and wire it in a
+Implement `argus.adapters.ScreenshotProvider.capture()` and wire it in a
 custom device adapter, or — usually simpler — express the capture as a
 command for the built-in `CommandScreenshotProvider`.
 
@@ -140,7 +140,7 @@ command for the built-in `CommandScreenshotProvider`.
 Subscribe to the event bus; no registration needed:
 
 ```python
-from utf.events import EventBus, TestFailed
+from argus.events import EventBus, TestFailed
 
 events = EventBus()
 events.subscribe(lambda e: notify_slack(e.result), TestFailed)

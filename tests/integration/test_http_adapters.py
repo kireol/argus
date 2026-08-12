@@ -3,10 +3,10 @@
 import pytest
 from pytest_httpserver import HTTPServer
 
-from utf.adapters.backend import BackendAdapter
-from utf.config.models import BackendConfig, InstrumentationConfig
-from utf.exceptions import BackendError, InstrumentationError
-from utf.instrumentation.client import HttpInstrumentationClient
+from argus.adapters.backend import BackendAdapter
+from argus.config.models import BackendConfig, InstrumentationConfig
+from argus.exceptions import BackendError, InstrumentationError
+from argus.instrumentation.client import HttpInstrumentationClient
 
 pytestmark = pytest.mark.integration
 

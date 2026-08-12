@@ -29,7 +29,7 @@ Initial release.
 - Generic HTTP backend adapter (httpx) with auth, retries, pooling, TLS.
 - HTTP application instrumentation protocol with capability discovery.
 - Modular pre-flight system; failing required checks block test execution.
-- `utf` CLI: `run`, `validate` (`--framework-only`), `list`, `init`,
+- `argus` CLI: `run`, `validate` (`--framework-only`), `list`, `init`,
   `version`, `update`, and `--dry-run`.
 - Artifacts per test (actual/expected/diff images, logs, instrumentation
   state, metadata) with success-retention policy.

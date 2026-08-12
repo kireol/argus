@@ -1,6 +1,6 @@
 # Example environment configuration.
-# Copy to your user config (see `utf init` for its location) or pass with
-# `utf run --config config/example.yaml`. Secrets come from the environment.
+# Copy to your user config (see `argus init` for its location) or pass with
+# `argus run --config config/example.yaml`. Secrets come from the environment.
 
 backend:
   base_url: ${BACKEND_URL}

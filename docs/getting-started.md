@@ -6,7 +6,7 @@ This walkthrough goes from a fresh clone to your first passing visual test.
 
 ```bash
 ./install.sh            # Windows: .\install.ps1
-utf validate --framework-only
+argus validate --framework-only
 ```
 
 You should see `Framework: READY`.
@@ -18,7 +18,7 @@ into screenshots, so the whole pipeline — backend state change, screenshot
 capture, OpenCV matching, OCR — runs for real:
 
 ```bash
-utf run --config config/fake.yaml
+argus run --config config/fake.yaml
 ```
 
 Expected output (abridged):
@@ -39,7 +39,7 @@ TEST RUN PASSED
 ## 3. Configure your real environment
 
 ```bash
-utf init
+argus init
 ```
 
 Edit the created file (its path is printed) and set:
@@ -50,7 +50,7 @@ Edit the created file (its path is printed) and set:
 Then run the full diagnosis:
 
 ```bash
-utf validate
+argus validate
 ```
 
 Fix anything marked ✗. Items marked ⚠ or ○ are optional/not configured and
@@ -61,7 +61,7 @@ won't block runs that don't need them.
 Before touching application state, verify a real run would work:
 
 ```bash
-utf --dry-run
+argus --dry-run
 ```
 
 This loads and validates every test, verifies assets, checks devices,
@@ -107,9 +107,9 @@ region you care about with any image editor.
 ## 6. Run it
 
 ```bash
-utf run --test MY-001
-utf run --feature myfeature
-utf run --tag smoke --continue-on-failure
+argus run --test MY-001
+argus run --feature myfeature
+argus run --tag smoke --continue-on-failure
 ```
 
 ## 7. Read a failure

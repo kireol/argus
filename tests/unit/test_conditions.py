@@ -3,11 +3,11 @@
 import pytest
 from tests.conftest import make_context, make_screen
 
-from utf.adapters.fake import FakeBackend, FakeDevice, FakeInstrumentation
-from utf.engine.wait import wait_until
-from utf.exceptions import ConditionError
-from utf.models.test_definition import ConditionSpec
-from utf.ocr.fake import FakeOCRProvider
+from argus.adapters.fake import FakeBackend, FakeDevice, FakeInstrumentation
+from argus.engine.wait import wait_until
+from argus.exceptions import ConditionError
+from argus.models.test_definition import ConditionSpec
+from argus.ocr.fake import FakeOCRProvider
 
 
 def build(context, spec_dict):
@@ -86,7 +86,7 @@ class TestLeafConditions:
             build(context, {"type": "does_not_exist"})
 
     def test_named_region_resolution(self, context, base_config):
-        from utf.models.common import Region
+        from argus.models.common import Region
 
         base_config.regions["artwork"] = Region(x=40, y=30, width=150, height=150)
         condition = build(

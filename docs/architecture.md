@@ -41,7 +41,7 @@ the test fails.
 ## Package map
 
 ```text
-src/utf/
+src/argus/
 ├── models/           Pydantic data models: test definitions, results,
 │                     observations, regions, health checks
 ├── config/           configuration models + layered loader (env expansion)
@@ -121,9 +121,9 @@ subscriber; a GUI subscribes to the same bus and consumes the same
 `report.json` schema. The CLI never contains engine logic:
 
 ```python
-from utf.config import load_config
-from utf.engine import TestRunner, TestFilter
-from utf.engine.runner import RunOptions
+from argus.config import load_config
+from argus.engine import TestRunner, TestFilter
+from argus.engine.runner import RunOptions
 
 runner = TestRunner(load_config())
 result = runner.run(RunOptions(filters=TestFilter(features=["movies"])))
@@ -133,14 +133,14 @@ result = runner.run(RunOptions(filters=TestFilter(features=["movies"])))
 
 | Extensible thing | Interface | Registration |
 | --- | --- | --- |
-| Actions | `utf.actions.Action` | `ActionRegistry.register` / entry point `utf.actions` |
-| Conditions | `utf.conditions.Condition` | `ConditionFactory.register` / entry point `utf.conditions` |
-| Devices | `utf.adapters.Device` | `DeviceRegistry.register` / entry point `utf.devices` |
-| Screenshot providers | `utf.adapters.ScreenshotProvider` | adapter configuration |
-| OCR providers | `utf.ocr.OCRProvider` | `create_ocr_provider` |
-| Verifiers | `utf.verifiers.Verifier` | used by conditions |
-| Pre-flight checks | `utf.preflight.PreflightCheck` | `build_preflight_checks` |
-| Alerts | `utf.reporting.alerts.AlertProvider` | CLI wiring |
+| Actions | `argus.actions.Action` | `ActionRegistry.register` / entry point `argus.actions` |
+| Conditions | `argus.conditions.Condition` | `ConditionFactory.register` / entry point `argus.conditions` |
+| Devices | `argus.adapters.Device` | `DeviceRegistry.register` / entry point `argus.devices` |
+| Screenshot providers | `argus.adapters.ScreenshotProvider` | adapter configuration |
+| OCR providers | `argus.ocr.OCRProvider` | `create_ocr_provider` |
+| Verifiers | `argus.verifiers.Verifier` | used by conditions |
+| Pre-flight checks | `argus.preflight.PreflightCheck` | `build_preflight_checks` |
+| Alerts | `argus.reporting.alerts.AlertProvider` | CLI wiring |
 | Reporters | subscribe to `EventBus` | `TestRunner(config, events)` |
 
 ## Parallelism & resources (spec §34–36)
@@ -153,7 +153,7 @@ changes. Do not parallelize tests against the same device.
 
 ## Error handling
 
-All framework errors derive from `utf.exceptions.UTFError` and carry a
+All framework errors derive from `argus.exceptions.UTFError` and carry a
 `remediation` hint. Specific classes (`ConfigurationError`, `PreflightError`,
 `DeviceConnectionError`, `BackendError`, `InstrumentationError`,
 `ScreenshotError`, `VerificationError`, `TestDefinitionError`,
