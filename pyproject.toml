@@ -9,7 +9,7 @@ description = "Argus — Universal Cross-Platform Application Functional & Visua
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
-authors = [{ name = "Argus Team" }]
+authors = [{ name = "Chris Parent" }]
 keywords = ["testing", "visual-testing", "automation", "android", "yocto", "embedded"]
 classifiers = [
     "Development Status :: 4 - Beta",
