@@ -6,6 +6,7 @@ import io
 import socket
 import threading
 import time
+from collections import deque
 
 import pytest
 from PIL import Image
@@ -13,9 +14,10 @@ from pytest_httpserver import HTTPServer
 from werkzeug.wrappers import Request, Response
 
 from argus.adapters.registry import DeviceRegistry
-from argus.adapters.roku import RokuAdapter
+from argus.adapters.roku import RokuAdapter, _DebugConsoleReader
 from argus.config.models import DeviceConfig
 from argus.exceptions import ConfigurationError, DeviceCapabilityError, DeviceConnectionError
+from argus.logging import get_logger
 
 DEVICE_INFO = """<?xml version="1.0" encoding="UTF-8" ?>
 <device-info>
@@ -249,6 +251,20 @@ class TestObservation:
         roku._logs.append("stale")
         roku.start_application()
         assert roku.get_logs() == ""
+
+
+class TestDebugConsoleReader:
+    def test_stop_joins_promptly_when_port_unreachable(self):
+        # Regression test: the reader's connect attempt used a 5s socket timeout while
+        # disconnect() only waits 2s in join(), so stop() could leave a straggler thread
+        # running (and able to write into a reused deque) well past disconnect(). A short
+        # per-attempt connect timeout keeps the stop-event check responsive.
+        reader = _DebugConsoleReader("127.0.0.1", 1, deque(), get_logger("test.roku"))
+        reader.start()
+        assert _wait_for(reader.is_alive)
+        reader.stop()
+        reader.join(timeout=3.0)
+        assert not reader.is_alive()
 
 
 class TestInput:
