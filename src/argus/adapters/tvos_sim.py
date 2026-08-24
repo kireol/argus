@@ -299,6 +299,9 @@ class TvosSimAdapter(Device):
                 process.terminate()
             with contextlib.suppress(Exception):
                 process.wait(timeout=2.0)
+            with contextlib.suppress(Exception):
+                if process.stdout is not None:
+                    process.stdout.close()
         pump, self._log_pump = self._log_pump, None
         if pump is not None:
             pump.join(timeout=2.0)

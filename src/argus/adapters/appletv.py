@@ -279,11 +279,14 @@ class AppleTvAdapter(Device):
             if not self.is_available():
                 return HealthCheckResult.failed("pyatv not installed")
             return HealthCheckResult.failed("apple tv not connected")
-        power = getattr(self._atv.power, "power_state", None)
-        state = getattr(power, "name", str(power))
-        if state and state.lower() == "off":
-            return HealthCheckResult.failed("apple tv is powered off", power=state)
-        return HealthCheckResult.ok("apple tv connected", power=state)
+        try:
+            power = getattr(self._atv.power, "power_state", None)
+            state = getattr(power, "name", str(power))
+            if state and state.lower() == "off":
+                return HealthCheckResult.failed("apple tv is powered off", power=state)
+            return HealthCheckResult.ok("apple tv connected", power=state)
+        except Exception as exc:  # noqa: BLE001 - pyatv raises many exception types
+            return HealthCheckResult.failed(f"apple tv error: {exc}")
 
     # -- application lifecycle --------------------------------------------------------
 
@@ -297,25 +300,43 @@ class AppleTvAdapter(Device):
 
     def is_application_running(self) -> bool:
         atv = self._require_atv()
-        app = atv.metadata.app
-        return app is not None and getattr(app, "identifier", None) == self._app_id
+        try:
+            app = atv.metadata.app
+            return app is not None and getattr(app, "identifier", None) == self._app_id
+        except DeviceConnectionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - pyatv raises many exception types
+            raise DeviceConnectionError(
+                f"Apple TV {self._host or self._identifier!r}: {exc}",
+                remediation="Re-pair with 'atvremote wizard' and check the Companion/AirPlay "
+                "credentials cover the interfaces you use.",
+            ) from exc
 
     # -- observation --------------------------------------------------------------------
 
     def get_playback_state(self) -> PlaybackState:
         atv = self._require_atv()
-        playing = self._run(atv.metadata.playing())
-        raw_state = getattr(playing.device_state, "name", str(playing.device_state))
-        app = atv.metadata.app
-        position = getattr(playing, "position", None)
-        duration = getattr(playing, "total_time", None)
-        return PlaybackState(
-            state=_STATE_MAP.get(str(raw_state).lower(), "idle"),  # type: ignore[arg-type]
-            title=getattr(playing, "title", None),
-            app_id=getattr(app, "identifier", None) if app is not None else None,
-            position=float(position) if position is not None else None,
-            duration=float(duration) if duration is not None else None,
-        )
+        try:
+            playing = self._run(atv.metadata.playing())
+            raw_state = getattr(playing.device_state, "name", str(playing.device_state))
+            app = atv.metadata.app
+            position = getattr(playing, "position", None)
+            duration = getattr(playing, "total_time", None)
+            return PlaybackState(
+                state=_STATE_MAP.get(str(raw_state).lower(), "idle"),  # type: ignore[arg-type]
+                title=getattr(playing, "title", None),
+                app_id=getattr(app, "identifier", None) if app is not None else None,
+                position=float(position) if position is not None else None,
+                duration=float(duration) if duration is not None else None,
+            )
+        except DeviceConnectionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - pyatv raises many exception types
+            raise DeviceConnectionError(
+                f"Apple TV {self._host or self._identifier!r}: {exc}",
+                remediation="Re-pair with 'atvremote wizard' and check the Companion/AirPlay "
+                "credentials cover the interfaces you use.",
+            ) from exc
 
     # -- input ----------------------------------------------------------------------------
 

@@ -313,7 +313,14 @@ class RokuAdapter(Device):
             )
 
     def _device_info(self) -> dict[str, str]:
-        root = ET.fromstring(self._ecp("GET", "query/device-info"))
+        data = self._ecp("GET", "query/device-info")
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError as exc:
+            raise DeviceConnectionError(
+                f"Roku {self._host!r}: /query/device-info returned malformed XML.",
+                remediation="Check 'host'/'ecp_port' point at a Roku's ECP port (8060).",
+            ) from exc
         return {child.tag: (child.text or "").strip() for child in root}
 
     # -- connection -----------------------------------------------------------------
@@ -382,7 +389,14 @@ class RokuAdapter(Device):
 
     def is_application_running(self) -> bool:
         self._require_connected()
-        root = ET.fromstring(self._ecp("GET", "query/active-app"))
+        data = self._ecp("GET", "query/active-app")
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError as exc:
+            raise DeviceConnectionError(
+                f"Roku {self._host!r}: /query/active-app returned malformed XML.",
+                remediation="Check 'host'/'ecp_port' point at a Roku's ECP port (8060).",
+            ) from exc
         app = root.find("app")
         return app is not None and app.get("id") == _DEV_APP_ID
 
@@ -422,5 +436,5 @@ class RokuAdapter(Device):
         if len(name) == 1:
             ecp_key = "Lit_" + urllib.parse.quote(name, safe="")
         else:
-            ecp_key = _KEY_MAP.get(name.upper(), name)
+            ecp_key = urllib.parse.quote(_KEY_MAP.get(name.upper(), name), safe="")
         self._ecp("POST", f"keypress/{ecp_key}")
