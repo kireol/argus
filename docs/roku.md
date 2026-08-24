@@ -22,10 +22,11 @@ devices:
     type: roku
     platform: roku                  # label used by tests' `platforms:` filter
     host: 192.168.1.42              # required
-    dev_password: rokudev           # needed for screenshots and sideloading
+    dev_password: ${ROKU_DEV_PASSWORD}  # developer-mode password; needed for screenshots and sideloading
     channel_zip: build/channel.zip  # optional — sideloaded on connect
     ecp_port: 8060                  # default
     debug_port: 8085                # BrightScript console, default
+    installer_port: 80              # developer web installer (default)
     timeout: 10                     # seconds per request
 ```
 

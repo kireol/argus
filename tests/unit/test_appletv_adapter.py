@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -54,6 +55,25 @@ class FakeMetadata:
         return self.now
 
 
+class _RaisingAppMetadata:
+    """metadata whose `app` property and `playing()` raise, like a pyatv failure."""
+
+    @property
+    def app(self):
+        raise RuntimeError("boom")
+
+    async def playing(self):
+        raise RuntimeError("boom")
+
+
+class _RaisingPower:
+    """power whose `power_state` property raises, like a pyatv failure."""
+
+    @property
+    def power_state(self):
+        raise RuntimeError("boom")
+
+
 class FakeAtv:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -74,7 +94,7 @@ def atv() -> FakeAtv:
 
 
 @pytest.fixture
-def adapter(atv: FakeAtv) -> AppleTvAdapter:
+def adapter(atv: FakeAtv) -> Iterator[AppleTvAdapter]:
     async def factory() -> FakeAtv:
         await asyncio.sleep(0)
         return atv
@@ -175,6 +195,28 @@ class TestPlayback:
         adapter.connect()
         state = adapter.get_playback_state()
         assert state.state == "idle" and state.app_id is None
+
+
+class TestErrorWrapping:
+    """pyatv exceptions raised mid-operation must be wrapped as DeviceConnectionError."""
+
+    def test_is_application_running_wraps_pyatv_exception(self, adapter, atv):
+        adapter.connect()
+        atv.metadata = _RaisingAppMetadata()
+        with pytest.raises(DeviceConnectionError, match="boom"):
+            adapter.is_application_running()
+
+    def test_get_playback_state_wraps_pyatv_exception(self, adapter, atv):
+        adapter.connect()
+        atv.metadata = _RaisingAppMetadata()
+        with pytest.raises(DeviceConnectionError, match="boom"):
+            adapter.get_playback_state()
+
+    def test_health_check_wraps_pyatv_exception(self, adapter, atv):
+        adapter.connect()
+        atv.power = _RaisingPower()
+        result = adapter.health_check()
+        assert result.healthy is False
 
 
 class TestInput:
