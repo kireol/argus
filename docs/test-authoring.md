@@ -99,6 +99,17 @@ condition:
 | `instrumentation_value` | `key`, `equals` or `contains` | app's `/test/status` field matches |
 | `application_state` | `key` (dotted), `equals` or `contains` | app's `/test/state` value matches |
 | `backend_value` | `key` (dotted), `equals`, optional `endpoint` | backend state value matches |
+| `log_contains` | `text` or `pattern` (regex), `lines` (default 200), `case_sensitive` | recent device logs (logcat / `log_command` / browser console) contain the text; negate with `not:` |
+
+Log assertions poll like any other condition, so they work in `wait_until`:
+
+```yaml
+- action: wait_until
+  timeout: 10s
+  condition:
+    type: log_contains
+    pattern: "Player: state=(PLAYING|BUFFERING)"
+```
 
 ### Composition
 
