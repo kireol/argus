@@ -326,7 +326,10 @@ class AppleTvAdapter(Device):
         if method not in _REMOTE_METHODS:
             raise DeviceCapabilityError(
                 f"Apple TV device {self.name!r} cannot send key {key!r}.",
-                remediation="Use DPAD_*, ENTER, BACK/MENU, HOME, MEDIA_*, VOLUME_* or a pyatv "
-                "remote method name.",
+                remediation=(
+                    "Use DPAD_*, ENTER, BACK/MENU, HOME, MEDIA_*, VOLUME_* or one of "
+                    "the pyatv method names: up, down, left, right, select, menu, home, "
+                    "play, pause, play_pause, stop, next, previous, volume_up, volume_down"
+                ),
             )
         self._run(getattr(atv.remote_control, method)())

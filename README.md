@@ -29,7 +29,7 @@ steps:
 
 Supported today: **backend REST APIs**, **Android** (ADB), **web browsers**
 (Playwright), **Roku** (developer mode), **Apple TV** (tvOS Simulator and
-pyatv), and **Yocto /embedded Linux** (SSH with pluggable screenshot
+pyatv), and **Yocto / embedded Linux** (SSH with pluggable screenshot
 providers). The engine is platform-agnostic — new device adapters plug in
 without touching the core.
 
