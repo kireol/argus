@@ -223,7 +223,7 @@ class _LogContainsCondition(Condition):
             )
         self._case_sensitive = bool(params.get("case_sensitive", True))
         self._lines = int(params.get("lines", 200))
-        flags = 0 if self._case_sensitive else re.IGNORECASE
+        flags = re.MULTILINE if self._case_sensitive else re.MULTILINE | re.IGNORECASE
         source = str(pattern) if pattern is not None else re.escape(str(text))
         self._describe = (
             f"pattern {pattern!r}" if pattern is not None else f"text {text!r}"

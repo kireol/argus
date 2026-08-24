@@ -18,6 +18,7 @@ playwright install chromium        # or firefox / webkit
 devices:
   web:
     type: browser
+    platform: web                   # so tests can filter with platforms: [web]
     url: http://localhost:3000/     # required — opened by start_application
     browser: chromium               # chromium (default) | firefox | webkit
     headless: true                  # false to watch the run
@@ -27,7 +28,10 @@ devices:
       base_url: http://localhost:3000
 ```
 
-Tests filter with `platforms: [web]`.
+Test filtering matches on `DeviceConfig.effective_platform` (the `platform`
+option if set, else `type`), not `Device.platform`. Without the `platform:
+web` line above, this device's filter label defaults to `browser` (its
+`type`), so `platforms: [web]` would not select it.
 
 ## What the adapter does
 

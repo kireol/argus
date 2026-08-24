@@ -157,6 +157,12 @@ class TestLeafConditions:
         with pytest.raises(ConditionError, match="does not support logs"):
             condition.evaluate(context, None)
 
+    def test_log_contains_pattern_anchors_per_line(self, context):
+        context.device.log_lines = ["log: page ready", "error: boom"]
+        condition = build(context, {"type": "log_contains", "pattern": "^error: "})
+        result = condition.evaluate(context, None)
+        assert result.passed
+
     def test_log_contains_inside_not(self, context):
         context.device.log_lines = ["all good"]
         condition = build(
