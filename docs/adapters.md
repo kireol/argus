@@ -55,6 +55,9 @@ never a silent no-op.
 | `android` | ADB subprocess | see [android.md](android.md) |
 | `yocto` | SSH (paramiko) | pluggable screenshots, see [yocto.md](yocto.md) |
 | `browser` | Playwright | web apps in chromium/firefox/webkit, see [browser.md](browser.md) |
+| `roku` | ECP + dev installer | developer-mode Roku with a sideloaded channel, see [roku.md](roku.md) |
+| `tvos_sim` | `xcrun simctl` + `osascript` | tvOS app in the Xcode Simulator, see [tvos.md](tvos.md) |
+| `appletv` | pyatv | physical Apple TV (remote + playback state, no screenshots), see [tvos.md](tvos.md) |
 | `fake` | in-memory | hardware-free development & framework self-tests |
 
 ## The fake ecosystem
