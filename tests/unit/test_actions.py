@@ -40,8 +40,50 @@ def test_registry_lists_builtin_actions(registry):
         "verify",
         "screenshot",
         "log",
+        "shell.run",
     ):
         assert expected in names
+
+
+def test_shell_run_with_args(registry, context, tmp_path):
+    marker = tmp_path / "shell_ran.txt"
+    result = registry.get("shell.run").execute(
+        context,
+        {
+            "command": "python3",
+            "args": ["-c", f"open({str(marker)!r}, 'w').write('ok')"],
+            "timeout": "10s",
+        },
+    )
+    assert result.passed, result.message
+    assert marker.read_text() == "ok"
+    assert result.details.get("exit_code") == 0
+    assert "stdout" in result.details
+    assert "stderr" in result.details
+
+
+def test_shell_run_nonzero_exit_fails(registry, context):
+    result = registry.get("shell.run").execute(
+        context,
+        {"command": "python3", "args": ["-c", "raise SystemExit(3)"], "timeout": "10s"},
+    )
+    assert not result.passed
+    assert result.failure_category == "backend"
+    assert result.details.get("exit_code") == 3
+
+
+def test_shell_run_expands_config_variables_into_env(registry, context):
+    context.variables["MARKER_VALUE"] = "from-config"
+    result = registry.get("shell.run").execute(
+        context,
+        {
+            "command": "python3",
+            "args": ["-c", "import os; print(os.environ['MARKER_VALUE'])"],
+            "timeout": "10s",
+        },
+    )
+    assert result.passed, result.message
+    assert "from-config" in result.details.get("stdout", "")
 
 
 def test_backend_set_updates_state(registry, context):
@@ -100,6 +142,52 @@ def test_wait_until_timeout_category(registry, context):
     )
     assert not result.passed
     assert result.failure_category == "timeout"
+
+
+def test_verify_reuses_matching_wait_until(registry, base_config, artwork_a, tmp_path):
+    """verify after wait_until with the same condition skips a second capture."""
+    device = FakeDevice(screenshots=[make_screen(artwork_a)])
+    context = make_context(
+        base_config,
+        device=device,
+        backend=FakeBackend(),
+        artifact_dir=tmp_path / "artifacts",
+    )
+    condition = {"type": "image_present", "image": "movie_123.png"}
+    wait = registry.get("wait_until").execute(
+        context,
+        {"condition": condition, "timeout": "2s", "poll_interval": "50ms"},
+    )
+    assert wait.passed
+    shots_after_wait = device.screenshot_count
+    verify = registry.get("verify").execute(context, {"condition": condition})
+    assert verify.passed
+    assert verify.details.get("reused_wait_until") is True
+    assert device.screenshot_count == shots_after_wait
+
+
+def test_verify_does_not_reuse_after_intervening_step(
+    registry, base_config, artwork_a, tmp_path
+):
+    device = FakeDevice(
+        screenshots=[make_screen(artwork_a), make_screen(artwork_a)]
+    )
+    context = make_context(
+        base_config,
+        device=device,
+        backend=FakeBackend(),
+        artifact_dir=tmp_path / "artifacts",
+    )
+    condition = {"type": "image_present", "image": "movie_123.png"}
+    assert registry.get("wait_until").execute(
+        context,
+        {"condition": condition, "timeout": "2s", "poll_interval": "50ms"},
+    ).passed
+    # Simulate runner clearing the reuse marker when another action runs.
+    context.state.pop("_reuse_wait_verify", None)
+    verify = registry.get("verify").execute(context, {"condition": condition})
+    assert verify.passed
+    assert not verify.details.get("reused_wait_until")
 
 
 def test_screenshot_saves_artifact(registry, context, tmp_path):

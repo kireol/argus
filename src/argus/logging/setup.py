@@ -46,12 +46,18 @@ class _RedactingFilter(logging.Filter):
 
 
 class _TextFormatter(logging.Formatter):
+    # Indent per-test log lines so Rich ``→ N/M - …`` start markers stand out.
+    _TEST_INDENT = "    "
+
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
         context = _record_context(record)
         if context:
             pairs = " ".join(f"{k}={v}" for k, v in context.items())
-            return f"{base} [{pairs}]"
+            base = f"{base} [{pairs}]"
+        # Lines tied to a running test (shell.run, etc.) sit under the start marker.
+        if getattr(record, "test_id", None) is not None:
+            base = self._TEST_INDENT + base
         return base
 
 

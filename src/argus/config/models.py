@@ -135,6 +135,9 @@ class OCRConfig(BaseModel):
 
     provider: str = "tesseract"
     language: str = "eng"
+    # Isolate near-white glyphs (e.g. letters and numbers on colorful wallpaper).
+    isolate_light_text: bool = False
+    isolate_light_text_luminance: int = Field(default=180, ge=0, le=255)
 
 
 class ResultsConfig(BaseModel):
@@ -143,6 +146,9 @@ class ResultsConfig(BaseModel):
     dir: str = "results"
     retain_on_success: bool = False
     save_screenshots_on_failure: bool = True
+    # Save actual/expected/diff for image verifies (pass or fail) and keep them
+    # for the HTML report. Implies retaining those artifact dirs on success.
+    save_comparison_images: bool = False
 
 
 class LoggingConfig(BaseModel):
@@ -157,7 +163,12 @@ class WaitConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_timeout: str | float = "10s"
-    default_poll_interval: str | float = "250ms"
+    # 500ms balances UI settle time vs capture cost; Android screencap often
+    # takes 250–800ms so tighter intervals mainly stack adb load.
+    default_poll_interval: str | float = "500ms"
+    # When verify immediately follows a successful wait_until with the same
+    # condition, reuse that result instead of another screencap + match.
+    reuse_wait_result_on_verify: bool = True
 
     @property
     def timeout_seconds(self) -> float:
@@ -166,6 +177,53 @@ class WaitConfig(BaseModel):
     @property
     def poll_interval_seconds(self) -> float:
         return parse_duration(self.default_poll_interval)
+
+
+class SetupCommand(BaseModel):
+    """A host command run from configuration (``setup`` or ``before_each``).
+
+    Same shape as ``shell.run``: prefer ``args`` as a list so values are not
+    re-parsed by a shell.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: str
+    args: list[str] = Field(default_factory=list)
+    timeout: str | float = "60s"
+    name: str | None = None
+    cwd: str | None = None
+
+    @property
+    def timeout_seconds(self) -> float:
+        return parse_duration(self.timeout)
+
+
+class PreflightTcpService(BaseModel):
+    """Require a TCP listener to be reachable before tests run.
+
+    Use for non-HTTP backends such as GelOS DataPipe (``host:port``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    address: str  # host:port (IPv6 as [addr]:port)
+    timeout: str | float = "2s"
+    required: bool = True
+    remediation: str | None = None
+
+    @property
+    def timeout_seconds(self) -> float:
+        return parse_duration(self.timeout)
+
+
+class PreflightConfig(BaseModel):
+    """Optional pre-flight probes beyond the built-in subsystem checks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    services: list[PreflightTcpService] = Field(default_factory=list)
 
 
 class AppConfig(BaseModel):
@@ -181,9 +239,12 @@ class AppConfig(BaseModel):
     results: ResultsConfig = Field(default_factory=ResultsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wait: WaitConfig = Field(default_factory=WaitConfig)
+    preflight: PreflightConfig = Field(default_factory=PreflightConfig)
     test_paths: list[str] = Field(default_factory=lambda: ["test_suites"])
     asset_paths: list[str] = Field(default_factory=lambda: ["assets/images"])
     variables: dict[str, Any] = Field(default_factory=dict)
+    setup: list[SetupCommand] = Field(default_factory=list)
+    before_each: list[SetupCommand] = Field(default_factory=list)
 
     # Set by the loader; not user-authored.
     config_file: str | None = None

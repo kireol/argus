@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `results.save_comparison_images` and CLI `--save-comparisons`: save
+  actual/expected/diff for image verifies (pass or fail) and retain them for
+  the HTML report.
+
+### Changed
+- CLI help groups filter/failure flags under a **Run options** panel on both
+  `argus --help` and `argus run --help` (same flags work before or after `run`).
+- HTML `report.html` groups tests by feature, supports pass/fail/skip filters,
+  and embeds artifact images (`actual.png`, `expected.png`, `diff.png`, and
+  any other screenshots) with relative paths. The CLI prints the report path
+  after each run.
+- Faster visual waits by default: `wait.default_poll_interval` is `500ms`;
+  multiscale matching tries scale `1.0` first and stops at threshold;
+  `wait_until` skips per-poll screen-info adb calls; `verify` reuses a
+  matching preceding `wait_until` result (`wait.reuse_wait_result_on_verify`).
+  Android/Yocto cache `get_screen_info()` after the first probe.
+
 ## [0.1.0] — 2026-08-12
 
 Initial release.
