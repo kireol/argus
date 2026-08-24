@@ -11,10 +11,14 @@ and publishes events on its bus throughout the run.
 from __future__ import annotations
 
 import contextlib
+import os
+import shlex
+import subprocess
 import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from argus.artifacts.manager import ArtifactManager
 from argus.config.models import AppConfig
@@ -33,7 +37,7 @@ from argus.events.events import (
     TestSkipped,
     TestStarted,
 )
-from argus.exceptions import UTFError
+from argus.exceptions import ConfigurationError, TestDefinitionError, UTFError
 from argus.logging import get_logger
 from argus.models.results import (
     RunResult,
@@ -45,6 +49,7 @@ from argus.models.results import (
 from argus.models.test_definition import Step, TestDefinition
 from argus.preflight.checks import build_preflight_checks
 from argus.preflight.runner import run_preflight
+from argus.utilities.variables import expand_variables
 
 _EXCEPTION_CATEGORIES: list[tuple[str, str]] = [
     ("TimeoutExceededError", "timeout"),
@@ -74,6 +79,8 @@ class RunOptions:
     filters: TestFilter = field(default_factory=TestFilter)
     failure_policy: FailurePolicy = field(default_factory=FailurePolicy)
     skip_preflight: bool = False
+    #: 1-based ordinal in the filtered suite to start at (``--skip-to``).
+    skip_to: int | None = None
 
 
 class TestRunner:
@@ -91,6 +98,33 @@ class TestRunner:
     def select(self, filters: TestFilter) -> list[TestDefinition]:
         return filters.apply(self.load())
 
+    @staticmethod
+    def _apply_skip_to(
+        tests: list[TestDefinition], skip_to: int
+    ) -> tuple[list[TestDefinition], int]:
+        """Drop tests before the 1-based ``skip_to`` ordinal.
+
+        Returns ``(remaining_tests, start_index)``. ``start_index`` matches the
+        console ``i/N`` numbering from a full run of the same filtered suite.
+        """
+        if skip_to < 1:
+            raise TestDefinitionError(
+                f"--skip-to must be >= 1 (got {skip_to}).",
+                remediation="Pass a 1-based test number, e.g. --skip-to 68.",
+            )
+        if not tests:
+            raise TestDefinitionError(
+                f"--skip-to {skip_to} requested but no tests are selected.",
+                remediation="Relax filters or omit --skip-to.",
+            )
+        if skip_to > len(tests):
+            raise TestDefinitionError(
+                f"--skip-to {skip_to} is past the end of the selected suite "
+                f"({len(tests)} tests).",
+                remediation=f"Use a value between 1 and {len(tests)}.",
+            )
+        return tests[skip_to - 1 :], skip_to
+
     # -- main entry point ---------------------------------------------------------------
 
     def run(self, options: RunOptions | None = None) -> RunResult:
@@ -98,9 +132,21 @@ class TestRunner:
         started = time.monotonic()
 
         tests = self.select(options.filters)
+        total_tests = len(tests)
+        start_index = 1
+        if options.skip_to is not None:
+            tests, start_index = self._apply_skip_to(tests, options.skip_to)
+
         run_result = RunResult(status=RunStatus.PASSED)
+        filters_desc = options.filters.describe()
+        if options.skip_to is not None:
+            filters_desc["skip_to"] = options.skip_to
         self.events.publish(
-            TestRunStarted(total_tests=len(tests), filters=options.filters.describe())
+            TestRunStarted(
+                total_tests=total_tests,
+                filters=filters_desc,
+                start_index=start_index,
+            )
         )
 
         with RunSession(self.config, self.events) as session:
@@ -116,6 +162,15 @@ class TestRunner:
                 run_result.preflight = results
                 if not passed:
                     run_result.status = RunStatus.PREFLIGHT_FAILED
+                    run_result.duration = time.monotonic() - started
+                    self.events.publish(TestRunCompleted(result=run_result))
+                    return run_result
+
+            if self.config.setup:
+                ok, setup_error = self._run_setup()
+                if not ok:
+                    run_result.status = RunStatus.SETUP_FAILED
+                    run_result.stop_reason = setup_error
                     run_result.duration = time.monotonic() - started
                     self.events.publish(TestRunCompleted(result=run_result))
                     return run_result
@@ -155,6 +210,99 @@ class TestRunner:
         return run_result
 
     # -- helpers -------------------------------------------------------------------------
+
+    def _run_setup(self) -> tuple[bool, str | None]:
+        """Run config ``setup`` commands once after preflight. Returns (ok, error)."""
+        self.log.info("Running %d setup command(s)", len(self.config.setup))
+        variables = dict(self.config.variables)
+        env = {**os.environ}
+        for key, value in variables.items():
+            if isinstance(key, str) and key.isidentifier() and value is not None:
+                env[key] = str(value)
+
+        for index, step in enumerate(self.config.setup, start=1):
+            label = step.name or f"setup[{index}]"
+            try:
+                command = expand_variables(
+                    step.command, variables, strict=True, source=f"setup.{label}.command"
+                )
+                args = expand_variables(
+                    step.args, variables, strict=True, source=f"setup.{label}.args"
+                )
+                cwd = (
+                    expand_variables(
+                        step.cwd, variables, strict=True, source=f"setup.{label}.cwd"
+                    )
+                    if step.cwd
+                    else None
+                )
+            except (UTFError, ConfigurationError) as exc:
+                return False, str(exc)
+
+            if not isinstance(command, str):
+                return False, f"Setup '{label}': command must expand to a string"
+            if not isinstance(args, list):
+                return False, f"Setup '{label}': args must expand to a list"
+            argv = [command, *[str(a) for a in args]]
+            display = shlex.join(argv)
+            self.log.info("setup: %s — %s", label, display)
+
+            run_cwd: str | None = None
+            if cwd is not None:
+                run_cwd = str(self.config.resolve_path(str(cwd)))
+
+            try:
+                completed = subprocess.run(
+                    argv,
+                    cwd=run_cwd,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=step.timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return False, (
+                    f"Setup '{label}' timed out after {step.timeout_seconds:.1f}s: {display}"
+                )
+            except OSError as exc:
+                return False, f"Setup '{label}' failed to start: {display} ({exc})"
+
+            if completed.stdout and completed.stdout.strip():
+                self.log.debug("setup stdout (%s):\n%s", label, completed.stdout.rstrip())
+            if completed.stderr and completed.stderr.strip():
+                self.log.debug("setup stderr (%s):\n%s", label, completed.stderr.rstrip())
+
+            if completed.returncode != 0:
+                detail = (completed.stderr or completed.stdout or "").strip() or "(no output)"
+                return False, (
+                    f"Setup '{label}' exited {completed.returncode}: {display}\n{detail}"
+                )
+
+        self.log.info("Setup complete")
+        return True, None
+
+    def _before_each_steps(self) -> list[Step]:
+        """Config ``before_each`` host commands as ``shell.run`` steps (prepended to setup)."""
+        steps: list[Step] = []
+        for index, command in enumerate(self.config.before_each, start=1):
+            params: dict[str, Any] = {
+                "command": command.command,
+                "args": list(command.args),
+                "timeout": command.timeout,
+            }
+            if command.cwd is not None:
+                params["cwd"] = command.cwd
+            steps.append(
+                Step.model_validate(
+                    {
+                        "action": "shell.run",
+                        "name": command.name or f"before_each[{index}]",
+                        **params,
+                    }
+                )
+            )
+        return steps
 
     def _device_names_for(
         self, tests: list[TestDefinition], filters: TestFilter
@@ -313,7 +461,8 @@ class TestRunner:
         )
 
         try:
-            failed_step = self._run_steps(session, context, test.setup, result, "setup")
+            setup_steps = [*self._before_each_steps(), *test.setup]
+            failed_step = self._run_steps(session, context, setup_steps, result, "setup")
             if failed_step is None:
                 failed_step = self._run_steps(session, context, test.steps, result, "steps")
         finally:
@@ -343,6 +492,10 @@ class TestRunner:
             step_started = time.monotonic()
             try:
                 action = session.actions.get(step.action)
+                # Any step other than verify invalidates a pending wait_until reuse
+                # (verify itself pops/consumes the marker).
+                if step.action != "verify":
+                    context.state.pop("_reuse_wait_verify", None)
                 params = context.expand(step.params)
                 outcome = action.execute(context, params)
                 step_result = StepResult(
@@ -408,8 +561,17 @@ class TestRunner:
         from argus.artifacts.manager import TestArtifacts
 
         assert isinstance(test_artifacts, TestArtifacts)
-        if not result.passed and context is not None:
-            self._save_failure_diagnostics(context, result, test_artifacts)
+        if context is not None:
+            save_comparisons = self.config.results.save_comparison_images
+            if not result.passed or save_comparisons:
+                self._save_image_comparisons(
+                    context,
+                    result,
+                    test_artifacts,
+                    all_steps=save_comparisons,
+                )
+            if not result.passed:
+                self._save_failure_diagnostics(context, result, test_artifacts)
         artifacts.finalize_test(test_artifacts, passed=result.passed)
         result.artifact_dir = (
             str(test_artifacts.directory) if test_artifacts.directory.exists() else None
@@ -418,13 +580,23 @@ class TestRunner:
         self.events.publish(event)
         return result
 
-    def _save_failure_diagnostics(
-        self, context: TestContext, result: TestResult, artifacts: object
+    def _save_image_comparisons(
+        self,
+        context: TestContext,
+        result: TestResult,
+        artifacts: object,
+        *,
+        all_steps: bool,
     ) -> None:
-        """On failure: screenshot, expected/diff images, logs, instrumentation."""
+        """Save actual/expected/diff for image-based verification steps."""
         from argus.artifacts.manager import TestArtifacts
+        from argus.verifiers.image import diff_image
 
         assert isinstance(artifacts, TestArtifacts)
+        if not result.passed and not self.config.results.save_screenshots_on_failure:
+            if not all_steps:
+                return
+
         try:
             observation = context.last_observation
             if observation is None and context.device is not None:
@@ -432,20 +604,78 @@ class TestRunner:
                     observation = context.observe()
                 except UTFError:
                     observation = None
-            if observation is not None:
-                artifacts.save_image("actual.png", observation.image)
 
-            failed_step = next((s for s in result.steps if not s.passed), None)
-            image_name = None
-            if failed_step and failed_step.verification:
-                image_name = failed_step.verification.details.get("image")
-            if image_name and context.verifiers.assets.exists(str(image_name)):
-                reference = context.verifiers.assets.load_array(str(image_name))
-                artifacts.save_image("expected.png", reference)
+            image_steps = [
+                s
+                for s in result.steps
+                if s.verification is not None
+                and s.verification.details.get("image")
+            ]
+            if not image_steps:
+                if observation is not None and not result.passed:
+                    artifacts.save_image("actual.png", observation.image)
+                return
+
+            if all_steps:
+                targets = image_steps
+            else:
+                failed = next((s for s in image_steps if not s.passed), None)
+                targets = [failed] if failed is not None else [image_steps[-1]]
+
+            canonical_written = False
+            for step in targets:
+                assert step.verification is not None
+                image_name = str(step.verification.details["image"])
+                stem = Path(image_name).stem
+                reference = None
+                if context.verifiers.assets.exists(image_name):
+                    reference = context.verifiers.assets.load_array(image_name)
+                diff = None
+                if observation is not None and reference is not None:
+                    diff = diff_image(observation, reference)
+                if all_steps and len(targets) > 1:
+                    prefix = stem
+                    also_canonical = (not step.passed) or (
+                        step is targets[-1] and not canonical_written
+                    )
+                else:
+                    prefix = ""
+                    also_canonical = True
+                if also_canonical:
+                    canonical_written = True
+                artifacts.save_comparison_set(
+                    actual=observation.image if observation is not None else None,
+                    expected=reference,
+                    diff=diff,
+                    prefix=prefix,
+                    also_canonical=also_canonical,
+                )
+        except Exception:  # noqa: BLE001 - diagnostics must never mask the real failure
+            self.log.exception(
+                "Failed to save comparison images for %s", result.test_id
+            )
+
+    def _save_failure_diagnostics(
+        self, context: TestContext, result: TestResult, artifacts: object
+    ) -> None:
+        """On failure: logs, instrumentation, metadata (images via comparisons)."""
+        from argus.artifacts.manager import TestArtifacts
+
+        assert isinstance(artifacts, TestArtifacts)
+        try:
+            # If comparisons were disabled or produced nothing, still capture a screen.
+            if (
+                self.config.results.save_screenshots_on_failure
+                and not artifacts.saved_comparisons
+            ):
+                observation = context.last_observation
+                if observation is None and context.device is not None:
+                    try:
+                        observation = context.observe()
+                    except UTFError:
+                        observation = None
                 if observation is not None:
-                    from argus.verifiers.image import diff_image
-
-                    artifacts.save_image("diff.png", diff_image(observation, reference))
+                    artifacts.save_image("actual.png", observation.image)
 
             if context.device is not None and context.device.capabilities.supports_logs:
                 with contextlib.suppress(UTFError):

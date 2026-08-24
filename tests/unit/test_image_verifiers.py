@@ -72,17 +72,78 @@ class TestImagePresent:
         assert abs(result.location.x - 400) <= 2  # absolute, not region-relative
         assert abs(result.location.y - 200) <= 2
 
-    def test_threshold_override(self, assets, image_config, artwork_a):
+    def test_scale_tolerance_samples_intermediate_scales(
+        self, image_config, tmp_path
+    ):
+        """tol=0.5 must try ~0.55, not only the endpoints 0.5 / 1.0 / 1.5."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (100, 100), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.ellipse((10, 10, 90, 90), fill=(220, 40, 40))
+        ref.save(tmp_path / "icon.png")
+
+        # On-screen icon is ~55% of the reference size.
+        screen = Image.new("RGB", (300, 200), (0, 0, 0))
+        small = ref.resize((55, 55))
+        screen.paste(small, (40, 40))
+
+        store = AssetStore([tmp_path])
+        verifier = ImagePresentVerifier(store, image_config)
+        result = verifier.verify(
+            observe(screen),
+            Expectation(image="icon.png", threshold=0.80, scale_tolerance=0.5),
+        )
+        assert result.passed
+        assert result.confidence is not None and result.confidence >= 0.80
+
+    def test_multiscale_early_exits_when_native_scale_matches(
+        self, assets, image_config, artwork_a, monkeypatch
+    ):
+        """When scale 1.0 already meets the threshold, do not sweep other scales."""
+        import argus.verifiers.image as image_mod
+
+        calls: list[tuple[int, int]] = []
+        real_match = image_mod.cv2.matchTemplate
+
+        def counting_match(haystack, templ, method, mask=None):
+            calls.append(templ.shape[:2])
+            if mask is None:
+                return real_match(haystack, templ, method)
+            return real_match(haystack, templ, method, mask=mask)
+
+        monkeypatch.setattr(image_mod.cv2, "matchTemplate", counting_match)
         verifier = ImagePresentVerifier(assets, image_config)
-        screen = make_screen()  # empty screen
-        strict = verifier.verify(
-            observe(screen), Expectation(image="movie_123.png", threshold=0.99)
+        screen = make_screen(artwork_a, position=(200, 100))
+        result = verifier.verify(
+            observe(screen),
+            Expectation(image="movie_123.png", threshold=0.90, scale_tolerance=0.5),
         )
-        lenient = verifier.verify(
-            observe(screen), Expectation(image="movie_123.png", threshold=0.0)
-        )
-        assert not strict.passed
-        assert lenient.passed
+        assert result.passed
+        assert len(calls) == 1
+
+    def test_tiny_scaled_templates_do_not_false_positive(
+        self, image_config, tmp_path
+    ):
+        """Large scale_tolerance must not shrink templates into noise matches."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (96, 96), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.rectangle((20, 20, 76, 76), fill=(220, 40, 40))
+        ref.save(tmp_path / "battery.png")
+
+        # Screen has a small bright speck that a 4×4 template would match.
+        screen = Image.new("RGB", (400, 200), (0, 0, 0))
+        draw = ImageDraw.Draw(screen)
+        draw.rectangle((200, 100, 204, 104), fill=(255, 255, 255))
+
+        store = AssetStore([tmp_path])
+        present = ImagePresentVerifier(store, image_config)
+        absent = ImageAbsentVerifier(store, image_config)
+        exp = Expectation(image="battery.png", threshold=0.70, scale_tolerance=1.2)
+        assert not present.verify(observe(screen), exp).passed
+        assert absent.verify(observe(screen), exp).passed
 
     def test_template_larger_than_screen_errors(self, assets, image_config, artwork_a):
         verifier = ImagePresentVerifier(assets, image_config)
@@ -111,6 +172,93 @@ class TestImagePresent:
             observe(screen), Expectation(image="movie_123.png", grayscale=True)
         )
         assert result.passed
+
+    def test_mask_background_ignores_dark_reference_pixels(
+        self, image_config, tmp_path
+    ):
+        """Icon crops on black still match when the live background changes."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (40, 40), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.polygon([(5, 20), (30, 5), (30, 35)], fill=(0, 220, 80))
+        ref.save(tmp_path / "icon_on_black.png")
+
+        # Same chevron on a noisy background (no black plate behind it).
+        screen = Image.new("RGB", (200, 120), (0, 0, 0))
+        px = screen.load()
+        for y in range(120):
+            for x in range(200):
+                px[x, y] = ((x * 3) % 255, (y * 5) % 255, (x + y) % 255)
+        draw = ImageDraw.Draw(screen)
+        draw.polygon([(25, 50), (50, 35), (50, 65)], fill=(0, 220, 80))
+
+        store = AssetStore([tmp_path])
+        verifier = ImagePresentVerifier(store, image_config)
+
+        plain = verifier.verify(
+            observe(screen), Expectation(image="icon_on_black.png", threshold=0.90)
+        )
+        masked = verifier.verify(
+            observe(screen),
+            Expectation(
+                image="icon_on_black.png",
+                threshold=0.90,
+                mask_background=True,
+            ),
+        )
+        assert not plain.passed
+        assert masked.passed
+        assert masked.confidence >= 0.90
+
+    def test_mask_background_absent_on_empty_region(self, image_config, tmp_path):
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (40, 40), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.polygon([(5, 20), (30, 5), (30, 35)], fill=(0, 220, 80))
+        ref.save(tmp_path / "icon_on_black.png")
+
+        store = AssetStore([tmp_path])
+        verifier = ImageAbsentVerifier(store, image_config)
+        empty = Image.new("RGB", (200, 120), (10, 10, 10))
+        result = verifier.verify(
+            observe(empty),
+            Expectation(
+                image="icon_on_black.png",
+                threshold=0.90,
+                mask_background=True,
+            ),
+        )
+        assert result.passed
+        assert result.confidence is not None
+        assert 0.0 <= result.confidence <= 1.0
+
+    def test_mask_background_absent_on_black_screen_clamps_inf(
+        self, image_config, tmp_path
+    ):
+        """Masked CCORR on pure black must not report FLT_MAX as confidence."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (40, 40), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.polygon([(5, 20), (30, 5), (30, 35)], fill=(0, 220, 80))
+        ref.save(tmp_path / "icon_on_black.png")
+
+        store = AssetStore([tmp_path])
+        verifier = ImageAbsentVerifier(store, image_config)
+        black = Image.new("RGB", (200, 120), (0, 0, 0))
+        result = verifier.verify(
+            observe(black),
+            Expectation(
+                image="icon_on_black.png",
+                threshold=0.90,
+                mask_background=True,
+            ),
+        )
+        assert result.passed
+        assert result.confidence is not None
+        assert result.confidence <= 1.0
 
 
 class TestImageAbsent:

@@ -46,7 +46,12 @@ def wait_until(
     last_result: VerificationResult | None = None
 
     while True:
-        observation = context.observe() if condition.needs_observation else None
+        # Pixels only during polls — skip wm size/density adb round-trips.
+        observation = (
+            context.observe(with_screen_info=False)
+            if condition.needs_observation
+            else None
+        )
         attempts += 1
         last_result = condition.evaluate(context, observation)
         elapsed = time.monotonic() - start

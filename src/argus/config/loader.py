@@ -62,6 +62,41 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
+def _load_with_extends(path: Path, *, seen: frozenset[Path] | None = None) -> dict[str, Any]:
+    """Load a YAML config, resolving an optional ``extends:`` chain.
+
+    ``extends`` is a path relative to the file that declares it (or absolute).
+    Bases are merged first; the declaring file wins on conflicts. The key is
+    stripped before validation so AppConfig never sees it.
+    """
+    resolved = path.resolve()
+    chain = seen or frozenset()
+    if resolved in chain:
+        raise ConfigurationError(
+            f"Configuration extends cycle involving {resolved}",
+            remediation="Remove the circular extends: reference.",
+        )
+    data = _read_yaml(path)
+    extends = data.pop("extends", None)
+    if extends is None:
+        return data
+    if not isinstance(extends, str) or not extends.strip():
+        raise ConfigurationError(
+            f"'extends' in {path} must be a non-empty string path.",
+            remediation="Example: extends: base.yaml",
+        )
+    base_path = Path(extends)
+    if not base_path.is_absolute():
+        base_path = path.parent / base_path
+    if not base_path.is_file():
+        raise ConfigurationError(
+            f"Extended configuration not found: {base_path} (from {path})",
+            remediation="Check the extends: path relative to the config file.",
+        )
+    base = _load_with_extends(base_path, seen=chain | {resolved})
+    return _deep_merge(base, data)
+
+
 def load_config(
     config_file: str | Path | None = None,
     *,
@@ -76,11 +111,11 @@ def load_config(
 
     repo_default = root / "config" / "default.yaml"
     if repo_default.is_file():
-        layers.append((repo_default, _read_yaml(repo_default)))
+        layers.append((repo_default, _load_with_extends(repo_default)))
 
     user_cfg = default_user_config_path()
     if user_cfg.is_file():
-        layers.append((user_cfg, _read_yaml(user_cfg)))
+        layers.append((user_cfg, _load_with_extends(user_cfg)))
 
     explicit: Path | None = None
     if config_file is not None:
@@ -90,7 +125,7 @@ def load_config(
                 f"Configuration file not found: {explicit}",
                 remediation="Check the --config path, or run 'argus init' to create one.",
             )
-        layers.append((explicit, _read_yaml(explicit)))
+        layers.append((explicit, _load_with_extends(explicit)))
 
     merged: dict[str, Any] = {}
     for _, layer in layers:

@@ -87,6 +87,41 @@ def test_version():
     assert "argus" in result.output
 
 
+def test_top_level_help_lists_commands_and_run_options():
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    for name in ("run", "validate", "list", "version", "init", "update"):
+        assert name in result.output
+    for flag in (
+        "--save-comparisons",
+        "--continue-on-failure",
+        "--skip-to",
+        "--no-logs",
+        "--dry-run",
+    ):
+        assert flag in result.output
+
+
+def test_run_help_includes_save_comparisons():
+    result = runner.invoke(app, ["run", "--help"], env={"COLUMNS": "120"})
+    assert result.exit_code == 0
+    out = result.output
+    # Rich may ellipsize long flags/help in narrow terminals.
+    assert "--save-comparisons" in out or "--save-comparis" in out
+    assert "HTML report" in out
+    assert "--dry-run" in out
+    assert "Validate" in out
+
+
+def test_list_help_includes_filters():
+    result = runner.invoke(app, ["list", "--help"])
+    assert result.exit_code == 0
+    assert "--feature" in result.output
+    assert "Filter by feature" in result.output
+    assert "--tag" in result.output
+    assert "--platform" in result.output
+
+
 def test_list(project):
     result = runner.invoke(app, ["list", "--config", str(project)])
     assert result.exit_code == 0
@@ -123,6 +158,22 @@ def test_run_no_match(project):
     result = runner.invoke(app, ["run", "--config", str(project), "--tag", "nonexistent"])
     assert result.exit_code == 1
     assert "No tests match" in result.output
+
+
+def test_run_skip_to(project):
+    result = runner.invoke(app, ["run", "--config", str(project), "--skip-to", "2"])
+    assert "Starting at test 2/2" in result.output
+    assert "Filters: skip_to=2" in result.output
+    assert "SET-001" in result.output
+    assert "MOV-001" not in result.output
+    # SET-001 may fail (log-only fixture); skip-to behavior is what matters.
+    assert result.exit_code in (0, 1)
+
+
+def test_run_skip_to_past_end(project):
+    result = runner.invoke(app, ["run", "--config", str(project), "--skip-to", "99"])
+    assert result.exit_code == 2
+    assert "past the end" in result.output
 
 
 def test_validate_framework_only(project):
