@@ -88,27 +88,40 @@ def test_version():
 
 
 def test_top_level_help_lists_commands_and_run_options():
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(app, ["--help"], env={"COLUMNS": "120"})
     assert result.exit_code == 0
+    out = result.output
     for name in ("run", "validate", "list", "version", "init", "update"):
-        assert name in result.output
+        assert name in out
+    assert "Run options" in out
+    assert "--no-logs" in out
     for flag in (
-        "--save-comparisons",
+        "--test",
+        "--feature",
+        "--tag",
+        "--platform",
+        "--all",
+        "--stop-on-failure",
         "--continue-on-failure",
+        "--max-failures",
+        "--skip-preflight",
         "--skip-to",
-        "--no-logs",
-        "--dry-run",
+        "--save-comparisons",
     ):
-        assert flag in result.output
+        assert flag in out or flag[:14] in out
+    assert "HTML report" in out
 
 
-def test_run_help_includes_save_comparisons():
+def test_run_help_includes_run_options_panel():
     result = runner.invoke(app, ["run", "--help"], env={"COLUMNS": "120"})
     assert result.exit_code == 0
     out = result.output
+    assert "Run options" in out
     # Rich may ellipsize long flags/help in narrow terminals.
     assert "--save-comparisons" in out or "--save-comparis" in out
     assert "HTML report" in out
+    assert "--feature" in out
+    assert "--continue-on" in out or "continue-on" in out
     assert "--dry-run" in out
     assert "Validate" in out
 

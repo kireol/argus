@@ -6,11 +6,13 @@ argus [GLOBAL OPTIONS] COMMAND [OPTIONS]
 
 Global options (before the command): `--config/-c FILE`, `--log-level LEVEL`,
 `--verbose/-v`, `--quiet/-q`, `--no-logs`, `--dry-run`, `--version`.
-`--config` is also accepted directly on `run`, `list`, and `validate`.
+`--config` is also accepted on `run`, `list`, and `validate`.
 
-Top-level `argus --help` lists every command and an epilog of common **run**
-options (`--continue-on-failure`, `--save-comparisons`, `--skip-to`, …). Full
-per-command flags: `argus run --help`, `argus list --help`, etc.
+`argus --help` and `argus run --help` both list filter / failure-policy flags
+under **Run options** (`--test`, `--feature`, `--tag`, `--platform`, `--all`,
+`--stop-on-failure` / `--continue-on-failure`, `--max-failures`,
+`--skip-preflight`, `--skip-to`, `--save-comparisons`). Those flags work as
+`argus run --feature movies` or `argus --feature movies run`.
 
 ## argus run
 
