@@ -30,6 +30,8 @@ class Event:
 class TestRunStarted(Event):
     total_tests: int
     filters: dict[str, Any] = field(default_factory=dict)
+    #: 1-based index of the first test that will run (for ``--skip-to``).
+    start_index: int = 1
 
 
 @dataclass(frozen=True)

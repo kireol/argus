@@ -51,7 +51,11 @@ def create_ocr_provider(config: OCRConfig) -> OCRProvider:
     if config.provider == "tesseract":
         from argus.ocr.tesseract import TesseractProvider
 
-        return TesseractProvider(language=config.language)
+        return TesseractProvider(
+            language=config.language,
+            isolate_light_text=config.isolate_light_text,
+            isolate_light_text_luminance=config.isolate_light_text_luminance,
+        )
     if config.provider == "fake":
         from argus.ocr.fake import FakeOCRProvider
 

@@ -47,6 +47,7 @@ class AndroidAdapter(Device):
         self._adb_path = adb_path
         self._timeout = command_timeout
         self._connected = False
+        self._screen_info: ScreenInfo | None = None
         self._log = get_logger("argus.android", device=name)
 
     @classmethod
@@ -237,6 +238,8 @@ class AndroidAdapter(Device):
             ) from exc
 
     def get_screen_info(self) -> ScreenInfo:
+        if self._screen_info is not None:
+            return self._screen_info
         size_output = self._shell("wm", "size")
         # "Physical size: 1080x1920" (possibly with an Override line)
         line = size_output.strip().splitlines()[-1]
@@ -248,7 +251,8 @@ class AndroidAdapter(Device):
             dpi = float(dpi_output.split(":")[-1].strip())
         except (ValueError, IndexError, DeviceConnectionError):
             pass
-        return ScreenInfo(width=width, height=height, dpi=dpi)
+        self._screen_info = ScreenInfo(width=width, height=height, dpi=dpi)
+        return self._screen_info
 
     def get_logs(self, lines: int = 200) -> str:
         return self._adb("logcat", "-d", "-t", str(lines)).decode(errors="replace")

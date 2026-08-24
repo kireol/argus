@@ -53,9 +53,15 @@ regions: {}
 #    width: 500
 #    height: 400
 
+wait:
+  default_timeout: 10s
+  default_poll_interval: 500ms
+  # reuse_wait_result_on_verify: true  # skip duplicate verify after wait_until
+
 results:
   dir: results
   retain_on_success: false
+  # save_comparison_images: true   # keep actual/expected/diff for HTML report
 
 logging:
   level: INFO
