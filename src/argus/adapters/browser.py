@@ -158,18 +158,35 @@ class BrowserAdapter(Device):
         try:
             self._browser = launcher.launch(headless=self._headless)
         except Exception as exc:  # noqa: BLE001 - Playwright raises its own Error type
-            self._playwright.stop()
-            self._playwright = None
+            self._teardown_playwright()
             raise DeviceConnectionError(
                 f"Unable to launch {self._browser_name}: {exc}",
                 remediation=f"Run: playwright install {self._browser_name}",
             ) from exc
-        context = self._browser.new_context(
-            viewport={"width": self._viewport[0], "height": self._viewport[1]}
-        )
-        page = context.new_page()
-        page.set_default_timeout(self._timeout * 1000)
+        try:
+            context = self._browser.new_context(
+                viewport={"width": self._viewport[0], "height": self._viewport[1]}
+            )
+            page = context.new_page()
+            page.set_default_timeout(self._timeout * 1000)
+        except Exception as exc:  # noqa: BLE001 - Playwright raises its own Error type
+            self._teardown_playwright()
+            raise DeviceConnectionError(
+                f"Unable to open a {self._browser_name} page: {exc}",
+                remediation=f"Run: playwright install {self._browser_name}",
+            ) from exc
         return page
+
+    def _teardown_playwright(self) -> None:
+        """Close any playwright browser/driver process created by ``_open_page``."""
+        browser, self._browser = self._browser, None
+        playwright, self._playwright = self._playwright, None
+        try:
+            if browser is not None:
+                browser.close()
+        finally:
+            if playwright is not None:
+                playwright.stop()
 
     def _require_page(self) -> PageLike:
         if self._page is None:
@@ -197,12 +214,7 @@ class BrowserAdapter(Device):
         self._app_running = False
         if page is not None and not page.is_closed():
             page.close()
-        if self._browser is not None:
-            self._browser.close()
-            self._browser = None
-        if self._playwright is not None:
-            self._playwright.stop()
-            self._playwright = None
+        self._teardown_playwright()
 
     def is_available(self) -> bool:
         if self._page_factory is not None:
