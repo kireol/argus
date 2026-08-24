@@ -27,7 +27,7 @@ steps:
     timeout: 10s
 ```
 
-Supported today: **backend REST APIs**, **Android** (ADB), and **Yocto /
+Supported today: **backend REST APIs**, **Android** (ADB), **web browsers** (Playwright), and **Yocto /
 embedded Linux** (SSH with pluggable screenshot providers). The engine is
 platform-agnostic — new device adapters plug in without touching the core.
 
@@ -92,6 +92,7 @@ See `argus --help` / `argus run --help` for the full option list.
 | Device adapters | [docs/adapters.md](docs/adapters.md) |
 | Android setup | [docs/android.md](docs/android.md) |
 | Yocto / embedded setup | [docs/yocto.md](docs/yocto.md) |
+| Web browser setup | [docs/browser.md](docs/browser.md) |
 | Image verification | [docs/image-verification.md](docs/image-verification.md) |
 | App instrumentation protocol | [docs/instrumentation.md](docs/instrumentation.md) |
 | CLI reference | [docs/cli.md](docs/cli.md) |

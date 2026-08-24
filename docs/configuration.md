@@ -44,7 +44,7 @@ backend:
 
 devices:
   <name>:                    # the name used in requires.devices / reports
-    type: android            # android | yocto | fake | plugin-provided
+    type: android            # android | yocto | browser | fake | plugin-provided
     platform: android        # filtering label; defaults to type
     instrumentation:         # optional, per device
       type: http             # http | fake
