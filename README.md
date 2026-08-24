@@ -27,9 +27,11 @@ steps:
     timeout: 10s
 ```
 
-Supported today: **backend REST APIs**, **Android** (ADB), **web browsers** (Playwright), and **Yocto /
-embedded Linux** (SSH with pluggable screenshot providers). The engine is
-platform-agnostic — new device adapters plug in without touching the core.
+Supported today: **backend REST APIs**, **Android** (ADB), **web browsers**
+(Playwright), **Roku** (developer mode), **Apple TV** (tvOS Simulator and
+pyatv), and **Yocto / embedded Linux** (SSH with pluggable screenshot
+providers). The engine is platform-agnostic — new device adapters plug in
+without touching the core.
 
 ## Quick Start
 
@@ -93,6 +95,8 @@ See `argus --help` / `argus run --help` for the full option list.
 | Android setup | [docs/android.md](docs/android.md) |
 | Yocto / embedded setup | [docs/yocto.md](docs/yocto.md) |
 | Web browser setup | [docs/browser.md](docs/browser.md) |
+| Roku setup | [docs/roku.md](docs/roku.md) |
+| Apple TV setup | [docs/tvos.md](docs/tvos.md) |
 | Image verification | [docs/image-verification.md](docs/image-verification.md) |
 | App instrumentation protocol | [docs/instrumentation.md](docs/instrumentation.md) |
 | CLI reference | [docs/cli.md](docs/cli.md) |
