@@ -45,7 +45,7 @@ argus init
 Edit the created file (its path is printed) and set:
 
 - `backend.base_url` — usually via `export BACKEND_URL=...`
-- your devices — see [android.md](android.md) and [yocto.md](yocto.md)
+- your devices — see [android.md](android.md), [yocto.md](yocto.md), and [browser.md](browser.md)
 
 Then run the full diagnosis:
 

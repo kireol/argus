@@ -102,6 +102,74 @@ class TestLeafConditions:
                 {"type": "image_present", "image": "movie_123.png", "region": "nope"},
             )
 
+    def test_log_contains_text(self, context):
+        context.device.log_lines = ["boot ok", "Player: state=PLAYING"]
+        condition = build(context, {"type": "log_contains", "text": "state=PLAYING"})
+        assert not condition.needs_observation
+        result = condition.evaluate(context, None)
+        assert result.passed
+        assert "state=PLAYING" in result.message
+
+    def test_log_contains_text_missing(self, context):
+        context.device.log_lines = ["boot ok"]
+        condition = build(context, {"type": "log_contains", "text": "PLAYING"})
+        result = condition.evaluate(context, None)
+        assert not result.passed
+        assert result.details["lines_scanned"] == 1
+
+    def test_log_contains_case_insensitive(self, context):
+        context.device.log_lines = ["Player: state=PLAYING"]
+        condition = build(
+            context, {"type": "log_contains", "text": "playing", "case_sensitive": False}
+        )
+        assert condition.evaluate(context, None).passed
+
+    def test_log_contains_pattern(self, context):
+        context.device.log_lines = ["frame 12 rendered in 16ms", "frame 13 rendered in 17ms"]
+        condition = build(context, {"type": "log_contains", "pattern": r"frame \d+ rendered"})
+        result = condition.evaluate(context, None)
+        assert result.passed
+        assert result.details["match"] == "frame 12 rendered"
+
+    def test_log_contains_respects_lines(self, context):
+        context.device.log_lines = ["old: PLAYING", "new: idle"]
+        condition = build(context, {"type": "log_contains", "text": "PLAYING", "lines": 1})
+        assert not condition.evaluate(context, None).passed
+
+    def test_log_contains_requires_text_or_pattern(self, context):
+        with pytest.raises(ConditionError, match="'text' or 'pattern'"):
+            build(context, {"type": "log_contains"})
+
+    def test_log_contains_rejects_invalid_pattern(self, context):
+        with pytest.raises(ConditionError, match="Invalid regex"):
+            build(context, {"type": "log_contains", "pattern": "("})
+
+    def test_log_contains_device_without_logs(self, base_config):
+        from argus.adapters.base import DeviceCapabilities
+
+        class NoLogDevice(FakeDevice):
+            @property
+            def capabilities(self):
+                return DeviceCapabilities(supports_screenshot=True)
+
+        context = make_context(base_config, device=NoLogDevice())
+        condition = build(context, {"type": "log_contains", "text": "x"})
+        with pytest.raises(ConditionError, match="does not support logs"):
+            condition.evaluate(context, None)
+
+    def test_log_contains_pattern_anchors_per_line(self, context):
+        context.device.log_lines = ["log: page ready", "error: boom"]
+        condition = build(context, {"type": "log_contains", "pattern": "^error: "})
+        result = condition.evaluate(context, None)
+        assert result.passed
+
+    def test_log_contains_inside_not(self, context):
+        context.device.log_lines = ["all good"]
+        condition = build(
+            context, {"not": {"type": "log_contains", "text": "FATAL"}}
+        )
+        assert condition.evaluate(context, None).passed
+
 
 class TestComposition:
     def test_all(self, context):

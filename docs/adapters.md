@@ -54,6 +54,7 @@ never a silent no-op.
 | --- | --- | --- |
 | `android` | ADB subprocess | see [android.md](android.md) |
 | `yocto` | SSH (paramiko) | pluggable screenshots, see [yocto.md](yocto.md) |
+| `browser` | Playwright | web apps in chromium/firefox/webkit, see [browser.md](browser.md) |
 | `fake` | in-memory | hardware-free development & framework self-tests |
 
 ## The fake ecosystem
