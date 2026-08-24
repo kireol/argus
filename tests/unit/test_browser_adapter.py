@@ -47,7 +47,14 @@ class _FakeConsoleMessage:
 
 
 class FakePage:
-    def __init__(self, *, size: tuple[int, int] = (800, 600), fail_screenshot: bool = False):
+    def __init__(
+        self,
+        *,
+        size: tuple[int, int] = (800, 600),
+        fail_screenshot: bool = False,
+        fail_goto: bool = False,
+        fail_close: bool = False,
+    ):
         self.mouse = _FakeMouse()
         self.keyboard = _FakeKeyboard()
         self.viewport_size = {"width": size[0], "height": size[1]}
@@ -56,9 +63,13 @@ class FakePage:
         self.reloads = 0
         self.closed = False
         self.fail_screenshot = fail_screenshot
+        self.fail_goto = fail_goto
+        self.fail_close = fail_close
         self._handlers: dict[str, list[Callable[[Any], None]]] = {}
 
     def goto(self, url: str, *, timeout: float | None = None, wait_until: str = "load") -> None:
+        if self.fail_goto:
+            raise RuntimeError("goto boom")
         self.visited.append(url)
         self.url = url
 
@@ -85,6 +96,8 @@ class FakePage:
         return self.closed
 
     def close(self) -> None:
+        if self.fail_close:
+            raise RuntimeError("close boom")
         self.closed = True
 
 
@@ -138,6 +151,21 @@ class TestLifecycle:
         adapter.disconnect()
         assert page.closed
         assert not adapter.is_application_running()
+
+    def test_connect_failure_during_start_application_closes_page_and_raises(self):
+        page = FakePage(fail_goto=True)
+        adapter = BrowserAdapter("web", url="http://app.local/", page_factory=lambda: page)
+        with pytest.raises(DeviceConnectionError, match="Unable to open"):
+            adapter.connect()
+        assert adapter._page is None
+        assert page.closed is True
+
+    def test_disconnect_survives_page_close_failure(self):
+        page = FakePage(fail_close=True)
+        adapter = BrowserAdapter("web", url="http://app.local/", page_factory=lambda: page)
+        adapter.connect()
+        adapter.disconnect()
+        assert adapter._page is None
 
 
 class TestObservation:
@@ -217,6 +245,10 @@ class TestConfig:
     def test_from_config_requires_url(self):
         with pytest.raises(ConfigurationError, match="url"):
             BrowserAdapter.from_config("web", DeviceConfig.model_validate({"type": "browser"}))
+
+    def test_init_rejects_unknown_browser(self):
+        with pytest.raises(ConfigurationError, match="chromium, firefox, webkit"):
+            BrowserAdapter("web", url="http://a/", browser="ie")
 
     def test_from_config_rejects_unknown_browser(self):
         with pytest.raises(ConfigurationError, match="chromium, firefox, webkit"):
