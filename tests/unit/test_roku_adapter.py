@@ -253,18 +253,81 @@ class TestObservation:
         assert roku.get_logs() == ""
 
 
+class _FakeSocket:
+    """Fake socket exposing just what `_pump` uses: `settimeout` and `recv`."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = list(chunks)
+
+    def settimeout(self, value: float) -> None:
+        pass
+
+    def recv(self, n: int) -> bytes:
+        if self._chunks:
+            return self._chunks.pop(0)
+        return b""
+
+
+class _RecvThenStopSocket:
+    """Fake socket whose `recv` hands back one line and, in that same call, flips the
+    reader's stop event -- modeling `stop()` firing in the window between a line being
+    read off the wire and it being appended to the shared deque."""
+
+    def __init__(self, stop_event: threading.Event, chunks: list[bytes]) -> None:
+        self._stop_event = stop_event
+        self._chunks = list(chunks)
+
+    def settimeout(self, value: float) -> None:
+        pass
+
+    def recv(self, n: int) -> bytes:
+        if self._chunks:
+            chunk = self._chunks.pop(0)
+            self._stop_event.set()
+            return chunk
+        return b""
+
+
 class TestDebugConsoleReader:
-    def test_stop_joins_promptly_when_port_unreachable(self):
-        # Regression test: the reader's connect attempt used a 5s socket timeout while
-        # disconnect() only waits 2s in join(), so stop() could leave a straggler thread
-        # running (and able to write into a reused deque) well past disconnect(). A short
-        # per-attempt connect timeout keeps the stop-event check responsive.
-        reader = _DebugConsoleReader("127.0.0.1", 1, deque(), get_logger("test.roku"))
+    def test_stop_bounds_blocking_connect(self, monkeypatch):
+        # Regression test for the 5s-per-attempt connect timeout: a reader stuck inside
+        # socket.create_connection (e.g. a blackholed console host) must still be reaped
+        # within disconnect()'s 2s join budget. The fake records the timeout it was called
+        # with and blocks for that long before failing, so this test fails against the old
+        # 5s timeout (thread still sleeping past the 2s join) and passes against the fixed
+        # <=1s per-attempt timeout -- it discriminates, unlike hitting an instantly-refused
+        # port.
+        recorded_timeouts: list[float | None] = []
+
+        def fake_create_connection(address: object, timeout: float | None = None) -> object:
+            recorded_timeouts.append(timeout)
+            time.sleep(min(timeout, 3.0) if timeout else 3.0)
+            raise TimeoutError("simulated blackhole")
+
+        monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+        reader = _DebugConsoleReader("127.0.0.1", 9999, deque(), get_logger("test.roku"))
         reader.start()
-        assert _wait_for(reader.is_alive)
+        time.sleep(0.1)  # let it enter the fake, blocking connect call
         reader.stop()
-        reader.join(timeout=3.0)
+        reader.join(timeout=2.0)
         assert not reader.is_alive()
+        assert recorded_timeouts and all(t is not None and t <= 1.0 for t in recorded_timeouts)
+
+    def test_pump_appends_lines_while_running(self):
+        sink: deque[str] = deque()
+        reader = _DebugConsoleReader("127.0.0.1", 1, sink, get_logger("test.roku"))
+        reader._pump(_FakeSocket([b"late line\n"]))
+        assert list(sink) == ["late line"]
+
+    def test_pump_drops_lines_received_after_stop(self):
+        # Regression test for the stale-reader-writes-into-a-reused-deque race: a line
+        # that arrives after stop() has fired (here, stop() fires inside the same recv()
+        # call that delivers it, modeling the real race window) must be dropped, not
+        # appended.
+        sink: deque[str] = deque()
+        reader = _DebugConsoleReader("127.0.0.1", 1, sink, get_logger("test.roku"))
+        reader._pump(_RecvThenStopSocket(reader._stop_event, [b"late line\n"]))
+        assert list(sink) == []
 
 
 class TestInput:
