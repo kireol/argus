@@ -54,10 +54,12 @@ class DeviceRegistry:
 def register_builtin_devices(registry: DeviceRegistry) -> None:
     """Register the adapters that ship with the framework (lazy imports)."""
     from argus.adapters.android import AndroidAdapter
+    from argus.adapters.browser import BrowserAdapter
     from argus.adapters.fake import FakeDevice
     from argus.adapters.yocto import YoctoAdapter
 
     registry.register("android", AndroidAdapter.from_config)
+    registry.register("browser", BrowserAdapter.from_config)
     registry.register("yocto", YoctoAdapter.from_config)
     registry.register("fake", FakeDevice.from_config)
 
