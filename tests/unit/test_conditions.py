@@ -170,6 +170,87 @@ class TestLeafConditions:
         )
         assert condition.evaluate(context, None).passed
 
+    def test_now_playing_matches_all_fields(self, context):
+        from argus.models.common import PlaybackState
+
+        context.device.playback_state = PlaybackState(
+            state="playing", title="Big Buck Bunny", app_id="com.example.tv"
+        )
+        condition = build(
+            context,
+            {
+                "type": "now_playing",
+                "state": "playing",
+                "title": "bunny",
+                "app_id": "com.example.tv",
+            },
+        )
+        assert not condition.needs_observation
+        result = condition.evaluate(context, None)
+        assert result.passed
+        assert result.details["observed"]["title"] == "Big Buck Bunny"
+
+    def test_now_playing_state_mismatch(self, context):
+        from argus.models.common import PlaybackState
+
+        context.device.playback_state = PlaybackState(state="paused")
+        condition = build(context, {"type": "now_playing", "state": "playing"})
+        result = condition.evaluate(context, None)
+        assert not result.passed
+        assert "state is 'paused'" in result.message
+
+    def test_now_playing_position_advancing(self, base_config):
+        from argus.models.common import PlaybackState
+
+        class Advancing(FakeDevice):
+            def __init__(self):
+                super().__init__()
+                self.position = 0.0
+
+            def get_playback_state(self):
+                self.position += 1.0
+                return PlaybackState(state="playing", position=self.position)
+
+        context = make_context(base_config, device=Advancing())
+        condition = build(
+            context, {"type": "now_playing", "position_advancing": True, "interval": 0}
+        )
+        result = condition.evaluate(context, None)
+        assert result.passed
+        assert result.details["second"]["position"] == 2.0
+
+    def test_now_playing_position_stalled(self, context):
+        from argus.models.common import PlaybackState
+
+        context.device.playback_state = PlaybackState(state="paused", position=10.0)
+        condition = build(
+            context, {"type": "now_playing", "position_advancing": True, "interval": 0}
+        )
+        result = condition.evaluate(context, None)
+        assert not result.passed
+        assert "did not advance" in result.message
+
+    def test_now_playing_requires_a_param(self, context):
+        with pytest.raises(ConditionError, match="at least one"):
+            build(context, {"type": "now_playing"})
+
+    def test_now_playing_device_without_capability(self, base_config):
+        from argus.adapters.base import DeviceCapabilities
+
+        class NoPlayback(FakeDevice):
+            @property
+            def capabilities(self):
+                return DeviceCapabilities(supports_screenshot=True)
+
+        context = make_context(base_config, device=NoPlayback())
+        condition = build(context, {"type": "now_playing", "state": "playing"})
+        with pytest.raises(ConditionError, match="does not support playback state"):
+            condition.evaluate(context, None)
+
+    def test_now_playing_inside_not(self, context):
+        condition = build(context, {"not": {"type": "now_playing", "state": "playing"}})
+        assert condition.evaluate(context, None).passed
+
 
 class TestComposition:
     def test_all(self, context):

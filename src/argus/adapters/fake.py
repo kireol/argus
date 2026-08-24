@@ -20,7 +20,7 @@ from argus.adapters.base import Device, DeviceCapabilities
 from argus.config.models import BackendConfig, DeviceConfig
 from argus.exceptions import DeviceConnectionError, ScreenshotError
 from argus.instrumentation.client import InstrumentationClient, InstrumentationStatus
-from argus.models.common import HealthCheckResult, ScreenInfo
+from argus.models.common import HealthCheckResult, PlaybackState, ScreenInfo
 
 
 class FakeDevice(Device):
@@ -54,6 +54,7 @@ class FakeDevice(Device):
         self.keys: list[str] = []
         self.log_lines: list[str] = ["fake device log"]
         self.screenshot_count = 0
+        self.playback_state: PlaybackState | None = None
 
     @classmethod
     def from_config(cls, name: str, config: DeviceConfig) -> FakeDevice:
@@ -84,6 +85,7 @@ class FakeDevice(Device):
             supports_app_lifecycle=True,
             supports_logs=True,
             supports_instrumentation=True,
+            supports_playback_state=True,
         )
 
     @property
@@ -214,6 +216,9 @@ class FakeDevice(Device):
 
     def get_logs(self, lines: int = 200) -> str:
         return "\n".join(self.log_lines[-lines:])
+
+    def get_playback_state(self) -> PlaybackState:
+        return self.playback_state or PlaybackState(state="idle")
 
     # -- input ------------------------------------------------------------------------------
 

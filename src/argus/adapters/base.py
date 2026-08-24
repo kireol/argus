@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from PIL.Image import Image
 
 from argus.exceptions import DeviceCapabilityError
-from argus.models.common import HealthCheckResult, ScreenInfo
+from argus.models.common import HealthCheckResult, PlaybackState, ScreenInfo
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,7 @@ class DeviceCapabilities:
     supports_app_lifecycle: bool = False
     supports_logs: bool = False
     supports_instrumentation: bool = False
+    supports_playback_state: bool = False
 
 
 class ScreenshotProvider(ABC):
@@ -106,6 +107,10 @@ class Device(ABC):
 
     def get_logs(self, lines: int = 200) -> str:
         raise self._unsupported("get_logs")
+
+    def get_playback_state(self) -> PlaybackState:
+        """Current media playback state (devices with supports_playback_state)."""
+        raise self._unsupported("get_playback_state")
 
     # -- input ----------------------------------------------------------------------
 

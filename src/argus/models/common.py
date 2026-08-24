@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -73,3 +73,13 @@ class ScreenInfo(BaseModel):
     @property
     def size(self) -> tuple[int, int]:
         return (self.width, self.height)
+
+
+class PlaybackState(BaseModel):
+    """Media playback state reported by a device (e.g. Apple TV now-playing)."""
+
+    state: Literal["playing", "paused", "stopped", "idle", "loading", "seeking"]
+    title: str | None = None
+    app_id: str | None = None
+    position: float | None = None
+    duration: float | None = None
