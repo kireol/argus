@@ -100,3 +100,49 @@ def test_resolve_path_relative_to_root(tmp_path):
     assert config.resolve_path("assets/images") == tmp_path / "assets/images"
     absolute = Path("/absolute/path")
     assert config.resolve_path(absolute) == absolute
+
+
+def test_extends_merges_base_then_override(tmp_path):
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "base.yaml").write_text(
+        "logging:\n  level: WARNING\n"
+        "regions:\n  a: {x: 0, y: 0, width: 10, height: 10}\n"
+        "variables:\n  SHARED: from-base\n  OVERRIDE_ME: base\n"
+        "asset_paths: [assets/shared]\n",
+        encoding="utf-8",
+    )
+    overlay = cfg_dir / "overlay.yaml"
+    overlay.write_text(
+        "extends: base.yaml\n"
+        "regions:\n  a: {x: 1, y: 2, width: 30, height: 40}\n"
+        "  b: {x: 5, y: 5, width: 5, height: 5}\n"
+        "variables:\n  OVERRIDE_ME: overlay\n"
+        "asset_paths: [assets/1300, assets/shared]\n",
+        encoding="utf-8",
+    )
+    config = load_config(overlay, root_dir=tmp_path, env={})
+    assert config.logging.level == "WARNING"
+    assert config.regions["a"].x == 1
+    assert config.regions["a"].width == 30
+    assert "b" in config.regions
+    assert config.variables["SHARED"] == "from-base"
+    assert config.variables["OVERRIDE_ME"] == "overlay"
+    assert config.asset_paths == ["assets/1300", "assets/shared"]
+    # extends must not leak into AppConfig
+    assert "extends" not in config.model_dump()
+
+
+def test_extends_cycle_errors(tmp_path):
+    a = tmp_path / "a.yaml"
+    b = tmp_path / "b.yaml"
+    a.write_text("extends: b.yaml\nlogging:\n  level: INFO\n", encoding="utf-8")
+    b.write_text("extends: a.yaml\nlogging:\n  level: DEBUG\n", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="cycle"):
+        load_config(a, root_dir=tmp_path, env={})
+
+
+def test_extends_missing_base_errors(tmp_path):
+    path = write_config(tmp_path, "extends: missing.yaml\nlogging:\n  level: INFO\n")
+    with pytest.raises(ConfigurationError, match="not found"):
+        load_config(path, root_dir=tmp_path, env={})

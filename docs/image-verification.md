@@ -19,7 +19,20 @@ screenshot and the best correlation becomes the confidence score (0..1).
     region: movie_artwork    # optional: search only here
     grayscale: false         # optional: match ignoring color
     scale_tolerance: 0.1     # optional: also try 90% / 110% template size
+    mask_background: true    # optional: ignore near-black pixels in the reference
 ```
+
+### Background-independent icon matching
+
+Screen-crop references usually include the background wallpaper behind the icon.
+Plain template matching then fails when that wallpaper changes (even if the
+icon itself is identical). Set `mask_background: true` to match only the
+bright/icon pixels in the reference (luminance above `mask_luminance`, default
+30). Argus switches to a mask-compatible OpenCV method automatically.
+
+Use this for telltales / turn signals captured as crops on black (or any dark)
+chrome. Leave it off for full-bleed screenshot comparisons where the background
+is part of the assertion.
 
 A passing result reports where the image was found:
 
@@ -74,11 +87,20 @@ region was searched.
 - **Capture once, verify many:** within one condition-evaluation pass
   (including `all`/`any` composites) a single screenshot feeds every visual
   sub-condition.
-- **Reference images are cached** in memory after first load — a 250ms
+- **Reference images are cached** in memory after first load — a
   `wait_until` poll loop never re-reads PNGs from disk.
 - **Regions crop before matching**, so cost scales with the region, not the
   screen.
-- Grayscale matching is ~3× cheaper than color when color isn't the signal.
+- **Multiscale early exit:** with `scale_tolerance`, Argus tries scale `1.0`
+  first (then nearest scales) and stops once confidence meets the threshold.
+- **`wait_until` polls skip screen-info probes** (`wm size` / density); only
+  the screenshot is captured each cycle.
+- **`verify` after a matching `wait_until`** reuses the wait result by default
+  (`wait.reuse_wait_result_on_verify`) — no second screencap/match when the
+  conditions are identical and nothing ran in between.
+- Default `wait.default_poll_interval` is `500ms` (override per step or in
+  config). Grayscale matching is ~3× cheaper than color when color isn't the
+  signal.
 
 ## Making good reference images
 
@@ -117,3 +139,17 @@ Every visual failure saves to the test's artifact directory:
 Look at `actual.png` first: nine times out of ten the screen is simply not
 showing what you expected, and the confidence score tells you how close it
 was.
+
+To keep comparison images for **passing** image verifies as well (so the HTML
+report always shows what was compared):
+
+```yaml
+results:
+  save_comparison_images: true
+```
+
+Or per run:
+
+```bash
+argus run --save-comparisons --feature DoorAjar
+```

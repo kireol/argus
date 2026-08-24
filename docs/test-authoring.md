@@ -72,6 +72,7 @@ IDs must be unique — duplicate IDs abort the run before any test executes.
 | `wait` | `duration` | fixed sleep — discouraged, logs a warning |
 | `screenshot` | optional `file` | capture and save to the test's artifacts |
 | `log` | `message` | write to the structured log |
+| `shell.run` | `command`, optional `args` (list), `timeout`, `cwd`, `expect_exit` | run a host command (simulators, helpers, etc.) |
 
 Every step may carry an optional `name:` used in reports.
 
@@ -89,7 +90,7 @@ condition:
 
 | Type | Key parameters | True when |
 | --- | --- | --- |
-| `image_present` | `image`, `threshold`, `region`, `grayscale`, `scale_tolerance` | reference image found in screenshot |
+| `image_present` | `image`, `threshold`, `region`, `grayscale`, `scale_tolerance`, `mask_background`, `mask_luminance` | reference image found in screenshot |
 | `image_not_present` | same | reference image NOT found |
 | `screenshot_matches` | `image`, `threshold`, `region` | whole screenshot (or region) similar to reference |
 | `text_present` | `text`, `region`, `case_sensitive` | OCR finds the text |

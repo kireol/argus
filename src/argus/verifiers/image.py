@@ -4,6 +4,8 @@ Performance notes:
 - Reference images are cached by :class:`AssetStore`.
 - When a region is given, the screenshot is cropped *before* matching.
 - One observation can feed all of these verifiers without re-capturing.
+- Multiscale search tries scale 1.0 first and stops once confidence meets
+  the threshold (remaining scales only run when needed).
 """
 
 from __future__ import annotations
@@ -25,6 +27,12 @@ _MATCH_METHODS = {
     "sqdiff_normed": cv2.TM_SQDIFF_NORMED,
 }
 
+# OpenCV only accepts a mask with these methods.
+_MASK_COMPATIBLE_METHODS = {cv2.TM_CCORR_NORMED, cv2.TM_SQDIFF_NORMED}
+_DEFAULT_MASK_LUMINANCE = 30
+# Tiny templates match noise with high confidence (e.g. 4×4 → false "present").
+_MIN_TEMPLATE_SIDE = 16
+
 
 def observation_to_array(observation: Observation, *, grayscale: bool) -> np.ndarray:
     """Convert an observation's PIL image to an OpenCV array."""
@@ -45,6 +53,45 @@ def crop(array: np.ndarray, region: Region) -> np.ndarray:
         region.y : min(region.bottom, h),
         region.x : min(region.right, w),
     ]
+
+
+def _background_mask(template: np.ndarray, luminance: int) -> np.ndarray:
+    """Build an 8-bit mask that keeps non-dark template pixels (the icon)."""
+    if template.ndim == 2:
+        gray = template
+    else:
+        gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    return ((gray > luminance).astype(np.uint8)) * 255
+
+
+def _confidence_from_result(
+    result: np.ndarray, method: int
+) -> tuple[float, tuple[int, int]]:
+    """Return (confidence, loc); treat non-finite / out-of-range scores as 0.
+
+    Masked ``TM_CCORR_NORMED`` on empty (e.g. all-black) regions can yield
+    ``+inf``; ``nan_to_num`` would turn that into a huge finite float unless
+    ``posinf`` is set explicitly.
+    """
+    if method == cv2.TM_SQDIFF_NORMED:
+        min_val, _, min_loc, _ = cv2.minMaxLoc(
+            np.nan_to_num(result, nan=1.0, posinf=1.0, neginf=1.0)
+        )
+        confidence = 1.0 - float(min_val)
+        loc = min_loc
+    else:
+        _, max_val, _, max_loc = cv2.minMaxLoc(
+            np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+        )
+        confidence = float(max_val)
+        loc = max_loc
+    if not np.isfinite(confidence):
+        confidence = 0.0
+    else:
+        # Clamp to [0, 1]; posinf is already mapped to 0 above so FLT_MAX
+        # overflow cannot sneak through as a "perfect" match.
+        confidence = float(np.clip(confidence, 0.0, 1.0))
+    return confidence, loc
 
 
 class _ImageVerifierBase(Verifier):
@@ -80,7 +127,7 @@ class _ImageVerifierBase(Verifier):
                 f"Verifier {self.name!r} requires an 'image' parameter."
             )
         threshold, grayscale, method = self._settings(expectation)
-        del threshold  # decided by callers
+        early_exit_at = threshold
 
         haystack = observation_to_array(observation, grayscale=grayscale)
         region = _as_region(expectation.region)
@@ -92,43 +139,99 @@ class _ImageVerifierBase(Verifier):
         template = self._assets.load_array(expectation.image, grayscale=grayscale)
         th, tw = template.shape[:2]
         hh, hw = haystack.shape[:2]
-        if th > hh or tw > hw:
-            raise VerificationError(
-                f"Reference image {expectation.image!r} ({tw}x{th}) is larger than "
-                f"the search area ({hw}x{hh}). Check the region or image scale."
-            )
-
         scale_tolerance = (
             expectation.scale_tolerance
             if expectation.scale_tolerance is not None
             else self._config.scale_tolerance
         )
+        # Only hard-fail when no scaled size can fit (incl. scale_tolerance shrink).
+        min_scale = max(0.25, 1.0 - scale_tolerance) if scale_tolerance > 0 else 1.0
+        min_h = max(_MIN_TEMPLATE_SIDE, int(th * min_scale))
+        min_w = max(_MIN_TEMPLATE_SIDE, int(tw * min_scale))
+        if min_h > hh or min_w > hw:
+            raise VerificationError(
+                f"Reference image {expectation.image!r} ({tw}x{th}) is larger than "
+                f"the search area ({hw}x{hh}). Check the region or image scale.",
+                remediation="Enlarge the region, shrink the reference, or raise scale_tolerance.",
+            )
+
+        mask: np.ndarray | None = None
+        if expectation.mask_background:
+            luminance = (
+                expectation.mask_luminance
+                if expectation.mask_luminance is not None
+                else _DEFAULT_MASK_LUMINANCE
+            )
+            mask = _background_mask(template, luminance)
+            if int(np.count_nonzero(mask)) == 0:
+                raise VerificationError(
+                    f"mask_background produced an empty mask for {expectation.image!r}.",
+                    remediation=(
+                        "Lower mask_luminance or use a reference with visible icon pixels."
+                    ),
+                )
+            # TM_CCOEFF_NORMED does not accept masks — prefer CCORR for neon icons.
+            if method not in _MASK_COMPATIBLE_METHODS:
+                method = cv2.TM_CCORR_NORMED
+
+        # Prefer native scale first (usual happy path). Then try other scales
+        # nearest to 1.0 so slight DPI drift exits early without a full sweep.
         scales = [1.0]
         if scale_tolerance > 0:
-            scales = [1.0 - scale_tolerance, 1.0, 1.0 + scale_tolerance]
+            # Sample between (1-tol) and (1+tol). Three endpoints alone miss
+            # mid values (e.g. tol 0.5 needs ~0.55 for Config F telltale icons).
+            # Floor lo so a large tol (legacy YAML uses 1.2) cannot shrink the
+            # template into noise-sized matches.
+            lo = max(0.25, 1.0 - scale_tolerance)
+            hi = 1.0 + scale_tolerance
+            step = 0.05
+            n = int(round((hi - lo) / step)) + 1
+            n = max(3, min(n, 41))
+            sampled = [lo + i * (hi - lo) / (n - 1) for i in range(n)]
+            others = [s for s in sampled if abs(s - 1.0) > 1e-9]
+            others.sort(key=lambda s: abs(s - 1.0))
+            scales = [1.0] + others
 
         best_confidence = -1.0
         best_location: Region | None = None
         for scale in scales:
+            if scale <= 0:
+                continue
             scaled = template
+            scaled_mask = mask
             if scale != 1.0:
                 new_w = max(1, int(tw * scale))
                 new_h = max(1, int(th * scale))
                 if new_h > hh or new_w > hw:
                     continue
                 scaled = cv2.resize(template, (new_w, new_h))
-            result = cv2.matchTemplate(haystack, scaled, method)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if method == cv2.TM_SQDIFF_NORMED:
-                confidence, loc = 1.0 - min_val, min_loc
+                if mask is not None:
+                    scaled_mask = cv2.resize(
+                        mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST
+                    )
+            sh, sw = scaled.shape[:2]
+            if sh < _MIN_TEMPLATE_SIDE or sw < _MIN_TEMPLATE_SIDE:
+                continue
+            if scaled_mask is not None:
+                result = cv2.matchTemplate(haystack, scaled, method, mask=scaled_mask)
             else:
-                confidence, loc = max_val, max_loc
+                result = cv2.matchTemplate(haystack, scaled, method)
+            confidence, loc = _confidence_from_result(result, method)
             if confidence > best_confidence:
-                sh, sw = scaled.shape[:2]
                 best_confidence = confidence
                 best_location = Region(
                     x=loc[0] + offset_x, y=loc[1] + offset_y, width=sw, height=sh
                 )
+            # Good enough: skip remaining scales (present passes; absent fails fast).
+            if best_confidence >= early_exit_at:
+                break
+
+        if best_location is None:
+            raise VerificationError(
+                f"No usable template scale for {expectation.image!r} "
+                f"in search area ({hw}x{hh}).",
+                remediation="Check scale_tolerance, region size, and reference image.",
+            )
 
         return best_confidence, best_location, region
 
@@ -157,6 +260,7 @@ class ImagePresentVerifier(_ImageVerifierBase):
                 "threshold": threshold,
                 "region": region.as_tuple() if region else None,
                 "best_match": location.model_dump() if location else None,
+                "mask_background": expectation.mask_background,
             },
         )
 
@@ -184,6 +288,7 @@ class ImageAbsentVerifier(_ImageVerifierBase):
                 "image": expectation.image,
                 "threshold": threshold,
                 "region": region.as_tuple() if region else None,
+                "mask_background": expectation.mask_background,
             },
         )
 

@@ -23,6 +23,7 @@ class RunStatus(StrEnum):
     FAILED = "failed"
     STOPPED = "stopped"
     PREFLIGHT_FAILED = "preflight_failed"
+    SETUP_FAILED = "setup_failed"
 
 
 class VerificationResult(BaseModel):

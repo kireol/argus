@@ -150,15 +150,20 @@ class TestContext:
 
     # -- observation --------------------------------------------------------------
 
-    def observe(self) -> Observation:
-        """Capture a fresh observation (screenshot + metadata) from the device."""
+    def observe(self, *, with_screen_info: bool = True) -> Observation:
+        """Capture a fresh observation (screenshot + optional metadata).
+
+        ``with_screen_info=False`` skips ``wm size`` / density probes — use
+        this in ``wait_until`` poll loops where only pixels matter.
+        """
         device = self.require_device()
         image = device.screenshot()
-        screen: ScreenInfo | None
-        try:
-            screen = device.get_screen_info()
-        except Exception:  # noqa: BLE001 - screen info is best-effort metadata
-            screen = None
+        screen: ScreenInfo | None = None
+        if with_screen_info:
+            try:
+                screen = device.get_screen_info()
+            except Exception:  # noqa: BLE001 - screen info is best-effort metadata
+                screen = None
         observation = Observation(image=image, device=device.name, screen=screen)
         self.state["last_observation"] = observation
         return observation

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import shlex
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any
 
 from argus.actions.base import Action, ActionRegistry, ActionResult
 from argus.exceptions import (
+    ActionError,
     BackendError,
     DeviceCapabilityError,
     DeviceConnectionError,
@@ -169,9 +173,15 @@ class _WaitUntilAction(Action):
         except ScreenshotError as exc:
             return ActionResult.failed(str(exc), category="screenshot")
         if outcome.passed:
+            if context.config.wait.reuse_wait_result_on_verify:
+                context.state["_reuse_wait_verify"] = {
+                    "condition": spec.model_dump(mode="json"),
+                    "verification": outcome.last_result,
+                }
             return ActionResult(
                 passed=True, message=outcome.message, verification=outcome.last_result
             )
+        context.state.pop("_reuse_wait_verify", None)
         return ActionResult.failed(
             outcome.message,
             category="timeout",
@@ -187,6 +197,21 @@ class _VerifyAction(Action):
 
     def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
         spec = ConditionSpec.model_validate(self.require_param(params, "condition"))
+        pending = context.state.pop("_reuse_wait_verify", None)
+        if (
+            pending is not None
+            and context.config.wait.reuse_wait_result_on_verify
+            and pending.get("condition") == spec.model_dump(mode="json")
+            and (verification := pending.get("verification")) is not None
+            and verification.passed
+        ):
+            return ActionResult(
+                passed=True,
+                message=f"Verified (reused wait_until): {verification.message}",
+                verification=verification,
+                details={"reused_wait_until": True},
+            )
+
         condition = context.conditions.build(spec, context)
         observation = context.observe() if condition.needs_observation else None
         result = condition.evaluate(context, observation)
@@ -224,6 +249,90 @@ class _LogAction(Action):
         return ActionResult.ok(message)
 
 
+class _ShellRunAction(Action):
+    """``shell.run`` — run a host command (e.g. simulators or helper scripts).
+
+    Prefer ``args`` as a list so values are not re-parsed by a shell. A bare
+    ``command`` string is run via the platform shell when ``args`` is omitted.
+    """
+
+    name = "shell.run"
+
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
+        command = self.require_param(params, "command")
+        args = params.get("args")
+        timeout = parse_duration(params.get("timeout", "60s"))
+        expect_exit = int(params.get("expect_exit", 0))
+        cwd = params.get("cwd")
+
+        if args is None:
+            argv: str | list[str] = str(command)
+            use_shell = True
+            display = argv
+        else:
+            if not isinstance(args, list):
+                raise ActionError(
+                    "Action 'shell.run' parameter 'args' must be a list.",
+                    remediation="Use args: [arg1, arg2] in the test YAML.",
+                )
+            argv = [str(command), *[str(a) for a in args]]
+            use_shell = False
+            display = shlex.join(argv)
+
+        context.logger.info("shell.run: %s", display)
+        env = {**os.environ}
+        for key, value in context.variables.items():
+            if isinstance(key, str) and key.isidentifier() and value is not None:
+                env[key] = str(value)
+        try:
+            completed = subprocess.run(
+                argv,
+                shell=use_shell,
+                cwd=str(cwd) if cwd else None,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return ActionResult.failed(
+                f"Command timed out after {timeout:.1f}s: {display}",
+                category="timeout",
+                stdout=(exc.stdout or "")[-2000:] if isinstance(exc.stdout, str) else "",
+                stderr=(exc.stderr or "")[-2000:] if isinstance(exc.stderr, str) else "",
+            )
+        except OSError as exc:
+            return ActionResult.failed(
+                f"Failed to run command: {display} ({exc})",
+                category="backend",
+            )
+
+        stdout = (completed.stdout or "")[-4000:]
+        stderr = (completed.stderr or "")[-4000:]
+        if stdout.strip():
+            context.logger.debug("shell.run stdout:\n%s", stdout.rstrip())
+        if stderr.strip():
+            context.logger.debug("shell.run stderr:\n%s", stderr.rstrip())
+
+        if completed.returncode != expect_exit:
+            detail = stderr.strip() or stdout.strip() or "(no output)"
+            return ActionResult.failed(
+                f"Command exited {completed.returncode} (expected {expect_exit}): "
+                f"{display}\n{detail}",
+                category="backend",
+                exit_code=completed.returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        return ActionResult.ok(
+            f"Command exited {completed.returncode}: {display}",
+            exit_code=completed.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
 def register(registry: ActionRegistry) -> None:
     registry.register(_BackendRequestAction("backend.get", "GET"))
     registry.register(_BackendRequestAction("backend.post", "POST"))
@@ -243,3 +352,4 @@ def register(registry: ActionRegistry) -> None:
     registry.register(_VerifyAction())
     registry.register(_ScreenshotAction())
     registry.register(_LogAction())
+    registry.register(_ShellRunAction())

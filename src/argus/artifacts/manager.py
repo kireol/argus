@@ -37,6 +37,7 @@ class TestArtifacts:
         self.directory = directory
         self._save_enabled = save_enabled
         self._created = False
+        self.saved_comparisons = False
 
     def _ensure_dir(self) -> None:
         if not self._created:
@@ -56,6 +57,43 @@ class TestArtifacts:
         else:
             image.save(path)
         return path
+
+    def save_comparison_set(
+        self,
+        *,
+        actual: Image | np.ndarray | None,
+        expected: Image | np.ndarray | None,
+        diff: Image | np.ndarray | None,
+        prefix: str = "",
+        also_canonical: bool = False,
+    ) -> None:
+        """Write actual/expected/diff PNGs for one image comparison.
+
+        When ``prefix`` is set (e.g. ``icn_tt_battery_red``), files are named
+        ``{prefix}_actual.png`` etc. ``also_canonical`` also writes the plain
+        ``actual.png`` / ``expected.png`` / ``diff.png`` names used by the HTML
+        report's primary gallery.
+        """
+        stem = prefix.strip().rstrip("_")
+        pairs: list[tuple[str, Image | np.ndarray | None]] = [
+            ("actual", actual),
+            ("expected", expected),
+            ("diff", diff),
+        ]
+        wrote = False
+        for kind, image in pairs:
+            if image is None:
+                continue
+            names = []
+            if stem:
+                names.append(f"{stem}_{kind}.png")
+            if also_canonical or not stem:
+                names.append(f"{kind}.png")
+            for name in names:
+                if self.save_image(name, image) is not None:
+                    wrote = True
+        if wrote:
+            self.saved_comparisons = True
 
     def save_text(self, name: str, content: str) -> Path | None:
         if not self._save_enabled:
@@ -104,11 +142,21 @@ class ArtifactManager:
         return self._run_dir
 
     def for_test(self, test_id: str) -> TestArtifacts:
-        return TestArtifacts(self.run_dir / test_id)
+        return TestArtifacts(
+            self.run_dir / test_id,
+            save_enabled=True,
+        )
 
     def finalize_test(self, artifacts: TestArtifacts, *, passed: bool) -> None:
         """Apply retention policy after a test finishes."""
-        if passed and not self._config.retain_on_success:
+        keep = (
+            not passed
+            or self._config.retain_on_success
+            or (
+                self._config.save_comparison_images and artifacts.saved_comparisons
+            )
+        )
+        if not keep:
             artifacts.discard()
 
     def save_run_report(self, name: str, content: str) -> Path:

@@ -123,6 +123,20 @@ def test_verification_failure_produces_artifacts(tmp_path):
     assert (artifact_dir / "logs.txt").exists()
 
 
+def test_save_comparison_images_keeps_passing_verifies(tmp_path):
+    config = build_config(tmp_path)
+    config.results.save_comparison_images = True
+    write_suite(tmp_path, [passing_test()])
+    result = TestRunner(config).run()
+    assert result.status == RunStatus.PASSED
+    test_result = result.tests[0]
+    assert test_result.artifact_dir is not None
+    artifact_dir = Path(test_result.artifact_dir)
+    assert (artifact_dir / "actual.png").exists()
+    assert (artifact_dir / "expected.png").exists()
+    assert (artifact_dir / "diff.png").exists()
+
+
 def test_stop_on_failure_skips_remaining(tmp_path):
     config = build_config(tmp_path)
     write_suite(tmp_path, [failing_test("F-001"), passing_test("P-002")])
@@ -289,3 +303,25 @@ def test_unknown_action_is_error_not_crash(tmp_path):
     result = TestRunner(config).run()
     assert result.tests[0].status in (TestStatus.FAILED, TestStatus.ERROR)
     assert "Unknown action" in (result.tests[0].error or "")
+
+
+def test_skip_to_runs_from_ordinal(tmp_path):
+    from argus.events.events import TestRunStarted
+    from argus.exceptions import TestDefinitionError
+
+    config = build_config(tmp_path)
+    write_suite(
+        tmp_path,
+        [passing_test("P-001"), passing_test("P-002"), passing_test("P-003")],
+    )
+    events = EventBus()
+    started: list[TestRunStarted] = []
+    events.subscribe(started.append, TestRunStarted)
+    result = TestRunner(config, events).run(RunOptions(skip_to=2))
+    assert [t.test_id for t in result.tests] == ["P-002", "P-003"]
+    assert started[0].total_tests == 3
+    assert started[0].start_index == 2
+    assert started[0].filters["skip_to"] == 2
+
+    with pytest.raises(TestDefinitionError, match="past the end"):
+        TestRunner(config).run(RunOptions(skip_to=4))
