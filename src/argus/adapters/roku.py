@@ -130,7 +130,9 @@ class _DebugConsoleReader(threading.Thread):
         backoff = 0.5
         while not self._stop_event.is_set():
             try:
-                sock = socket.create_connection((self._host, self._port), timeout=5)
+                # A short per-attempt timeout keeps the stop-event check below responsive
+                # even when the console host blackholes packets instead of refusing.
+                sock = socket.create_connection((self._host, self._port), timeout=1.0)
             except OSError as exc:
                 self._log.debug("Roku debug console unavailable: %s", exc)
                 self._stop_event.wait(backoff)
@@ -160,6 +162,10 @@ class _DebugConsoleReader(threading.Thread):
             buffer += chunk
             while b"\n" in buffer:
                 line, buffer = buffer.split(b"\n", 1)
+                if self._stop_event.is_set():
+                    # Dropped, not appended: stop() may have already fired and a stale
+                    # reader from a prior session must never write into a live deque.
+                    continue
                 self._sink.append(line.decode("utf-8", errors="replace").rstrip("\r"))
 
 
