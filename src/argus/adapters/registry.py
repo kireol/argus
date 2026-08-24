@@ -54,12 +54,14 @@ class DeviceRegistry:
 def register_builtin_devices(registry: DeviceRegistry) -> None:
     """Register the adapters that ship with the framework (lazy imports)."""
     from argus.adapters.android import AndroidAdapter
+    from argus.adapters.appletv import AppleTvAdapter
     from argus.adapters.browser import BrowserAdapter
     from argus.adapters.fake import FakeDevice
     from argus.adapters.roku import RokuAdapter
     from argus.adapters.tvos_sim import TvosSimAdapter
     from argus.adapters.yocto import YoctoAdapter
 
+    registry.register("appletv", AppleTvAdapter.from_config)
     registry.register("android", AndroidAdapter.from_config)
     registry.register("browser", BrowserAdapter.from_config)
     registry.register("roku", RokuAdapter.from_config)
