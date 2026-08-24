@@ -210,6 +210,7 @@ class YoctoAdapter(Device):
         self._app_process = app_process
         self._log_command = log_command
         self._screen_size = screen_size
+        self._screen_info_cache: ScreenInfo | None = None
         self._log = get_logger("argus.yocto", device=name)
 
     @classmethod
@@ -343,13 +344,16 @@ class YoctoAdapter(Device):
     def get_screen_info(self) -> ScreenInfo:
         if self._screen_size:
             return ScreenInfo(width=self._screen_size[0], height=self._screen_size[1])
+        if self._screen_info_cache is not None:
+            return self._screen_info_cache
         # Try common sources without assuming a display stack.
         exit_code, output, _ = self._transport.execute(
             "cat /sys/class/graphics/fb0/virtual_size 2>/dev/null"
         )
         if exit_code == 0 and "," in str(output):
             width, height = (int(v) for v in str(output).strip().split(","))
-            return ScreenInfo(width=width, height=height)
+            self._screen_info_cache = ScreenInfo(width=width, height=height)
+            return self._screen_info_cache
         raise ScreenshotError(
             f"Cannot determine screen size for {self.name!r}.",
             remediation="Set devices.<name>.screen_size: [width, height].",

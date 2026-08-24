@@ -90,3 +90,48 @@ class TestContextLogger:
         record = caplog.records[-1]
         assert record.test_id == "T-9"
         assert record.device == "dev-1"
+
+
+class TestTextFormatter:
+    def test_indents_lines_with_test_id(self):
+        from argus.logging.setup import _TextFormatter
+
+        formatter = _TextFormatter(
+            fmt="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        with_test = logging.LogRecord(
+            name="argus.test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="shell.run: /tmp/helper.sh",
+            args=(),
+            exc_info=None,
+        )
+        with_test.test_id = "TS-005"
+        with_test.test_name = "Hazard lights"
+        text = formatter.format(with_test)
+        assert text.startswith("    ")
+        assert "shell.run" in text
+        assert "test_id=TS-005" in text
+
+    def test_does_not_indent_run_level_lines(self):
+        from argus.logging.setup import _TextFormatter
+
+        formatter = _TextFormatter(
+            fmt="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+        record = logging.LogRecord(
+            name="argus.runner",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="Setup complete",
+            args=(),
+            exc_info=None,
+        )
+        text = formatter.format(record)
+        assert not text.startswith(" ")
+        assert text.endswith("Setup complete")

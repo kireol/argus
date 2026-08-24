@@ -63,12 +63,22 @@ argus run --feature movies        # run a feature
 argus run --platform android      # run one platform
 argus run --tag smoke --continue-on-failure
 argus run --max-failures 5
+argus run --skip-to 68            # resume at console test number N
+argus run --no-logs               # progress only (hide timestamped INFO lines)
+argus run --save-comparisons      # keep actual/expected/diff for HTML report
+argus version                     # print framework version
+argus update                      # reinstall deps after git pull, then validate
 ```
 
 Every run writes artifacts and reports under `results/<timestamp>/`:
-console output, `report.json`, `junit.xml`, `report.html`, and — for each
-failure — the actual screenshot, expected image, visual diff, device logs,
-and instrumentation state.
+console output, `report.json`, `junit.xml`, and `report.html` (tests grouped
+by feature, with failure details and embedded `actual` / `expected` / `diff`
+screenshots). The console prints the HTML report path when the run finishes.
+Use `--save-comparisons` (or `results.save_comparison_images: true`) to keep
+comparison images for passing image verifies too. Each failure also keeps
+device logs and instrumentation state beside those images.
+
+See `argus --help` / `argus run --help` for the full option list.
 
 ## Documentation
 

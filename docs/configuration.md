@@ -66,21 +66,28 @@ ocr:
   provider: tesseract        # tesseract | fake | plugin-provided
   language: eng
 
-regions:                     # named screen regions for tests
+regions:                     # named screen regions for tests (absolute pixels)
   movie_artwork:
     x: 100
     y: 100
     width: 500
     height: 400
 
+# Optional: merge another YAML first (path relative to this file).
+# extends: base.yaml
+
 wait:
   default_timeout: 10s       # wait_until defaults
-  default_poll_interval: 250ms
+  default_poll_interval: 500ms
+  # reuse_wait_result_on_verify: true  # skip duplicate verify after matching wait_until
 
 results:
   dir: results
   retain_on_success: false   # true keeps artifacts for passing tests too
   save_screenshots_on_failure: true
+  # Save actual/expected/diff for every image verify (pass or fail) and keep
+  # them for report.html. Same as CLI: argus run --save-comparisons
+  save_comparison_images: false
 
 logging:
   level: INFO                # DEBUG | INFO | WARNING | ERROR
@@ -91,7 +98,38 @@ test_paths: [test_suites]    # where YAML tests live
 asset_paths: [assets/images] # where reference images are resolved
 
 variables: {}                # global ${variables} available to all tests
+
+# Optional TCP probes run during preflight (in addition to HTTP backend.health).
+# Use for non-HTTP services such as GelOS DataPipe.
+preflight:
+  services: []
+  # - name: DataPipe
+  #   address: ${DPDS_HOST:-127.0.0.1:50051}   # host:port
+  #   timeout: 2s
+  #   required: true
+  #   remediation: Start DataPipe (run-dpds.py) and retry.
+
+setup: []                    # optional host commands after preflight, before tests
+  # - name: prepare device
+  #   command: scripts/my-pre-setup.sh
+  #   timeout: 60s
+
+before_each: []              # optional host commands before every test (prepended to setup)
+  # - name: reset SUT state
+  #   command: scripts/reset-defaults.sh
+  #   timeout: 60s
 ```
+
+## Extends (config overlays)
+
+A config may declare `extends: other.yaml` (path relative to the declaring
+file). The base is merged first; the declaring file wins on conflicts.
+Dict sections such as `regions` and `variables` deep-merge; lists such as
+`asset_paths` are replaced entirely (not concatenated). The `extends` key is
+stripped before validation.
+
+Use this to share devices/setup while swapping absolute-pixel `regions:` and
+resolution-specific asset folders when AVD sizes differ.
 
 ## Repository vs user configuration (spec §65.9)
 

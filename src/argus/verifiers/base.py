@@ -31,6 +31,9 @@ class Expectation(BaseModel):
     grayscale: bool | None = None
     case_sensitive: bool = False
     scale_tolerance: float | None = None
+    # Ignore near-black reference pixels so icon crops work on any wallpaper.
+    mask_background: bool = False
+    mask_luminance: int | None = Field(default=None, ge=0, le=255)
 
     @property
     def extras(self) -> dict[str, Any]:
