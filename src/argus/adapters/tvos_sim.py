@@ -251,7 +251,21 @@ class TvosSimAdapter(Device):
         if self._app_path is not None:
             self._simctl("install", udid, str(self._app_path))
         self._udid = udid
-        self._start_log_stream()
+        try:
+            self._start_log_stream()
+        except DeviceConnectionError:
+            self._stop_log_stream()
+            self._udid = None
+            self._app_running = False
+            raise
+        except Exception as exc:
+            self._stop_log_stream()
+            self._udid = None
+            self._app_running = False
+            raise DeviceConnectionError(
+                f"tvOS simulator {udid!r}: failed to start log stream: {exc}",
+                remediation="Check the simulator is booted and 'xcrun simctl spawn' works.",
+            ) from exc
         self._log.info("Connected to tvOS simulator %s", udid)
 
     def _start_log_stream(self) -> None:
@@ -371,7 +385,8 @@ class TvosSimAdapter(Device):
         name = key.removeprefix("KEYCODE_")
         upper = name.upper()
         if len(name) == 1:
-            action = f'keystroke "{name}"'
+            escaped = name.replace("\\", "\\\\").replace('"', '\\"')
+            action = f'keystroke "{escaped}"'
         elif upper in _KEY_CODES:
             action = f"key code {_KEY_CODES[upper]}"
         elif upper in _KEYSTROKES:
