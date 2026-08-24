@@ -250,3 +250,50 @@ class TestConfig:
         assert adapter.is_available() is False
         with pytest.raises(DeviceConnectionError, match=r'pip install "argus\[browser\]"'):
             adapter.connect()
+
+    def test_open_page_failure_after_launch_tears_down_playwright(self, monkeypatch):
+        """A failure after the browser process is launched must not leak it."""
+        import builtins
+        import types
+
+        class _FakeBrowser:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def new_context(self, **kwargs: Any) -> Any:
+                raise RuntimeError("new_context boom")
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeDriver:
+            def __init__(self, browser: _FakeBrowser) -> None:
+                self.chromium = types.SimpleNamespace(launch=lambda **kwargs: browser)
+                self.stopped = False
+
+            def stop(self) -> None:
+                self.stopped = True
+
+        fake_browser = _FakeBrowser()
+        fake_driver = _FakeDriver(fake_browser)
+        fake_sync_api = types.SimpleNamespace(
+            sync_playwright=lambda: types.SimpleNamespace(start=lambda: fake_driver)
+        )
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "playwright.sync_api":
+                return fake_sync_api
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        adapter = BrowserAdapter("web", url="http://a/")
+        with pytest.raises(DeviceConnectionError, match="Unable to open"):
+            adapter.connect()
+
+        assert fake_browser.closed is True
+        assert fake_driver.stopped is True
+        assert adapter._browser is None
+        assert adapter._playwright is None
