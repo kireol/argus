@@ -12,6 +12,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
   the HTML report.
 
 ### Changed
+- CLI help groups filter/failure flags under a **Run options** panel on both
+  `argus --help` and `argus run --help` (same flags work before or after `run`).
 - HTML `report.html` groups tests by feature, supports pass/fail/skip filters,
   and embeds artifact images (`actual.png`, `expected.png`, `diff.png`, and
   any other screenshots) with relative paths. The CLI prints the report path
