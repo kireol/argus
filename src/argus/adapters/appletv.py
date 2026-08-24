@@ -27,8 +27,8 @@ from argus.models.common import HealthCheckResult, PlaybackState
 _DEFAULT_TIMEOUT = 10.0
 _SCAN_TIMEOUT = 5
 
-# Android-style key names -> pyatv RemoteControl method names. pyatv method
-# names themselves (lower-case) are accepted too.
+# Android-style key names -> pyatv RemoteControl method names. Only the
+# mapped method names are accepted.
 _KEY_MAP = {
     "DPAD_UP": "up",
     "DPAD_DOWN": "down",

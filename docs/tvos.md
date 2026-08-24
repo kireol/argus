@@ -92,10 +92,10 @@ Image/text conditions raise a capability error on this device.
 
 ### Keys
 
-`DPAD_*`, `ENTER`/`DPAD_CENTER` (select), `BACK`/`MENU` (menu), `HOME`,
-`MEDIA_PLAY_PAUSE`, `MEDIA_PLAY`, `MEDIA_PAUSE`, `MEDIA_STOP`, `MEDIA_NEXT`,
-`MEDIA_PREVIOUS`, `VOLUME_UP`, `VOLUME_DOWN` — or any pyatv remote method name
-(`play_pause`, `top_menu`, ...).
+Android-style names map onto these pyatv RemoteControl method names: `up`,
+`down`, `left`, `right`, `select`, `menu`, `home`, `play`, `pause`,
+`play_pause`, `stop`, `next`, `previous`, `volume_up`, `volume_down`. Only
+these method names are accepted.
 
 ### Limitations
 
