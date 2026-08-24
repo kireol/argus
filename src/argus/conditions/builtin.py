@@ -248,7 +248,7 @@ class _LogContainsCondition(Condition):
                 f"Device {device.name!r} does not support logs; log_contains cannot run.",
                 remediation=(
                     "Use a device type with log support (android, yocto with "
-                    "log_command, browser, fake)."
+                    "log_command, browser, roku, tvos_sim, fake)."
                 ),
             )
         logs = device.get_logs(self._lines)

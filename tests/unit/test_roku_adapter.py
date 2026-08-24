@@ -346,6 +346,10 @@ class TestInput:
             # wire (`Lit_%25`, i.e. a literal "%" character).
             ("%", "Lit_%"),
             ("InstantReplay", "InstantReplay"),
+            # Pass-through key names are URL-quoted too; httpserver matches on the
+            # percent-decoded `request.path`, so the expected path is the decoded
+            # form of what's actually sent on the wire (`Instant%20Replay`).
+            ("Instant Replay", "Instant Replay"),
         ],
     )
     def test_press_key_mapping(self, roku, httpserver: HTTPServer, key, ecp):
@@ -353,6 +357,26 @@ class TestInput:
         roku.connect()
         roku.press_key(key)
         assert httpserver.log[-1][0].path == f"/keypress/{ecp}"
+
+
+class TestMalformedXml:
+    def test_device_info_malformed_xml_raises_on_connect(self, httpserver: HTTPServer):
+        httpserver.expect_request("/query/device-info").respond_with_data(
+            "<html>not roku", content_type="text/html"
+        )
+        adapter = RokuAdapter("tv", host=httpserver.host, ecp_port=httpserver.port)
+        with pytest.raises(DeviceConnectionError, match="malformed XML"):
+            adapter.connect()
+        assert not adapter.health_check().healthy
+
+    def test_active_app_malformed_xml_raises(self, roku, httpserver: HTTPServer):
+        roku.connect()
+        httpserver.expect_request("/query/active-app").respond_with_data(
+            "not xml at all <<<", content_type="text/xml"
+        )
+        with pytest.raises(DeviceConnectionError, match="malformed XML"):
+            roku.is_application_running()
+        roku.disconnect()
 
 
 class TestConfig:

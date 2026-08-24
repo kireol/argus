@@ -65,8 +65,8 @@ devices:
     host: 192.168.1.50                # or identifier: <pyatv id>
     app_id: com.example.tvapp         # required — launched by start_application
     credentials:
-      companion: "..."                # from atvremote wizard
-      airplay: "..."
+      companion: ${APPLETV_COMPANION}   # from atvremote wizard
+      airplay: ${APPLETV_AIRPLAY}       # from atvremote wizard
     timeout: 10
 ```
 
