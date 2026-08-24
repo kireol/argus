@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from argus.conditions.base import Condition, ConditionFactory, resolve_region
@@ -247,7 +248,7 @@ class _LogContainsCondition(Condition):
                 f"Device {device.name!r} does not support logs; log_contains cannot run.",
                 remediation=(
                     "Use a device type with log support (android, yocto with "
-                    "log_command, browser, fake)."
+                    "log_command, browser, roku, tvos_sim, fake)."
                 ),
             )
         logs = device.get_logs(self._lines)
@@ -270,6 +271,88 @@ class _LogContainsCondition(Condition):
         )
 
 
+class _NowPlayingCondition(Condition):
+    """True when the device's playback state matches the expected fields.
+
+    Reads ``Device.get_playback_state()`` on every evaluation (so it works in
+    ``wait_until``). ``position_advancing`` samples twice, ``interval`` seconds
+    apart, and requires the position to increase. Negate with ``not:``.
+    """
+
+    name = "now_playing"
+
+    def __init__(self, params: dict[str, Any]) -> None:
+        self._state = params.get("state")
+        self._title = params.get("title")
+        self._app_id = params.get("app_id")
+        self._position_advancing = bool(params.get("position_advancing", False))
+        self._interval = float(params.get("interval", 1.0))
+        if (
+            self._state is None
+            and self._title is None
+            and self._app_id is None
+            and not self._position_advancing
+        ):
+            raise ConditionError(
+                "now_playing requires at least one of 'state', 'title', 'app_id' "
+                "or 'position_advancing'.",
+                remediation="Add the playback field(s) the test should assert on.",
+            )
+
+    def evaluate(
+        self, context: TestContext, observation: Observation | None
+    ) -> VerificationResult:
+        device = context.require_device()
+        if not device.capabilities.supports_playback_state:
+            raise ConditionError(
+                f"Device {device.name!r} does not support playback state; "
+                "now_playing cannot run.",
+                remediation="Use a device type that reports playback state (appletv, "
+                "fake).",
+            )
+        first = device.get_playback_state()
+        details: dict[str, Any] = {"observed": first.model_dump()}
+        failures: list[str] = []
+        if self._state is not None and first.state != self._state:
+            failures.append(f"state is {first.state!r}, expected {self._state!r}")
+        if (
+            self._title is not None
+            and str(self._title).lower() not in (first.title or "").lower()
+        ):
+            failures.append(f"title {first.title!r} does not contain {self._title!r}")
+        if self._app_id is not None and first.app_id != self._app_id:
+            failures.append(f"app is {first.app_id!r}, expected {self._app_id!r}")
+        if self._position_advancing:
+            if self._interval > 0:
+                time.sleep(self._interval)
+            second = device.get_playback_state()
+            details["second"] = second.model_dump()
+            if (
+                first.position is None
+                or second.position is None
+                or second.position <= first.position
+            ):
+                failures.append(
+                    f"position did not advance ({first.position} -> "
+                    f"{second.position})"
+                )
+        if failures:
+            return VerificationResult(
+                passed=False,
+                verifier=self.name,
+                message="; ".join(failures),
+                details=details,
+            )
+        return VerificationResult(
+            passed=True,
+            verifier=self.name,
+            message=(
+                f"Now playing matches (state={first.state!r}, title={first.title!r})"
+            ),
+            details=details,
+        )
+
+
 def register(factory: ConditionFactory) -> None:
     factory.register("image_present", _image_present)
     factory.register("image_not_present", _image_absent)
@@ -281,3 +364,4 @@ def register(factory: ConditionFactory) -> None:
     factory.register("application_state", lambda p, c: _ApplicationStateCondition(p))
     factory.register("backend_value", lambda p, c: _BackendValueCondition(p))
     factory.register("log_contains", lambda p, c: _LogContainsCondition(p))
+    factory.register("now_playing", lambda p, c: _NowPlayingCondition(p))
