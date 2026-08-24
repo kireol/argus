@@ -10,6 +10,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - `results.save_comparison_images` and CLI `--save-comparisons`: save
   actual/expected/diff for image verifies (pass or fail) and retain them for
   the HTML report.
+- `log_contains` condition: assert that recent device logs (Android logcat,
+  Yocto `log_command`, browser console) contain a substring or regex; usable
+  in `wait_until` and `verify`, negatable with `not:`.
+- `browser` device adapter (Playwright, optional `argus[browser]` extra):
+  screenshots, click/drag/keyboard input, `about:blank`-based app lifecycle,
+  and browser console captured as device logs. Platform label `web`.
 
 ### Changed
 - CLI help groups filter/failure flags under a **Run options** panel on both

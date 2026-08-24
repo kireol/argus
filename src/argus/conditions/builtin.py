@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from argus.conditions.base import Condition, ConditionFactory, resolve_region
@@ -203,6 +204,72 @@ class _BackendValueCondition(Condition):
         )
 
 
+class _LogContainsCondition(Condition):
+    """True when recent device logs contain a substring or regex match.
+
+    Reads ``Device.get_logs(lines)`` on every evaluation, so it works in
+    ``wait_until`` poll loops. Negate with ``not:`` composition.
+    """
+
+    name = "log_contains"
+
+    def __init__(self, params: dict[str, Any]) -> None:
+        text = params.get("text")
+        pattern = params.get("pattern")
+        if (text is None) == (pattern is None):
+            raise ConditionError(
+                "log_contains requires exactly one of 'text' or 'pattern'.",
+                remediation="Use 'text' for a literal substring or 'pattern' for a regex.",
+            )
+        self._case_sensitive = bool(params.get("case_sensitive", True))
+        self._lines = int(params.get("lines", 200))
+        flags = re.MULTILINE if self._case_sensitive else re.MULTILINE | re.IGNORECASE
+        source = str(pattern) if pattern is not None else re.escape(str(text))
+        self._describe = (
+            f"pattern {pattern!r}" if pattern is not None else f"text {text!r}"
+        )
+        try:
+            self._regex = re.compile(source, flags)
+        except re.error as exc:
+            raise ConditionError(
+                f"Invalid regex for log_contains: {pattern!r} ({exc}).",
+                remediation=(
+                    "Check the 'pattern' value is a valid Python regular expression."
+                ),
+            ) from exc
+
+    def evaluate(
+        self, context: TestContext, observation: Observation | None
+    ) -> VerificationResult:
+        device = context.require_device()
+        if not device.capabilities.supports_logs:
+            raise ConditionError(
+                f"Device {device.name!r} does not support logs; log_contains cannot run.",
+                remediation=(
+                    "Use a device type with log support (android, yocto with "
+                    "log_command, browser, fake)."
+                ),
+            )
+        logs = device.get_logs(self._lines)
+        match = self._regex.search(logs)
+        lines_scanned = len(logs.splitlines())
+        if match is not None:
+            return VerificationResult(
+                passed=True,
+                verifier=self.name,
+                message=(
+                    f"Logs contain {self._describe} (matched {match.group(0)!r})"
+                ),
+                details={"match": match.group(0), "lines_scanned": lines_scanned},
+            )
+        return VerificationResult(
+            passed=False,
+            verifier=self.name,
+            message=f"Logs do not contain {self._describe} in last {self._lines} lines",
+            details={"match": None, "lines_scanned": lines_scanned},
+        )
+
+
 def register(factory: ConditionFactory) -> None:
     factory.register("image_present", _image_present)
     factory.register("image_not_present", _image_absent)
@@ -213,3 +280,4 @@ def register(factory: ConditionFactory) -> None:
     factory.register("instrumentation_value", lambda p, c: _InstrumentationValueCondition(p))
     factory.register("application_state", lambda p, c: _ApplicationStateCondition(p))
     factory.register("backend_value", lambda p, c: _BackendValueCondition(p))
+    factory.register("log_contains", lambda p, c: _LogContainsCondition(p))
