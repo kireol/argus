@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from rich.console import Console
 
 from argus.events.bus import EventBus
@@ -30,6 +32,11 @@ class ConsoleReporter:
         self.console = console or Console(highlight=False)
         self.quiet = quiet
         self._current_feature: str | None = None
+        self._total_tests: int = 0
+        self._test_index: int = 0
+        self._current_progress: str | None = None
+        # When True, the next status/result line replaces the previous test line.
+        self._replaceable: bool = False
 
     def attach(self, bus: EventBus) -> None:
         bus.subscribe(self._on_event)
@@ -44,12 +51,21 @@ class ConsoleReporter:
     # -- run ---------------------------------------------------------------------------
 
     def _on_TestRunStarted(self, event: TestRunStarted) -> None:  # noqa: N802
+        self._total_tests = event.total_tests
+        # Preserve full-suite i/N numbering when resuming via --skip-to.
+        self._test_index = max(0, event.start_index - 1)
+        self._current_progress = None
+        self._replaceable = False
         if self.quiet:
             return
         self.console.print(f"Found [bold]{event.total_tests}[/bold] tests.")
         if event.filters:
             filters = ", ".join(f"{k}={v}" for k, v in event.filters.items())
             self.console.print(f"Filters: {filters}")
+        if event.start_index > 1:
+            self.console.print(
+                f"Starting at test [bold]{event.start_index}/{event.total_tests}[/bold]."
+            )
 
     def _on_PreflightStarted(self, event: PreflightStarted) -> None:  # noqa: N802
         if self.quiet:
@@ -91,30 +107,85 @@ class ConsoleReporter:
 
     # -- tests --------------------------------------------------------------------------
 
+    def _can_overwrite(self) -> bool:
+        """In-place updates need a TTY and no INFO lines between start and finish."""
+        if not self._replaceable or not self.console.is_terminal:
+            return False
+        # Timestamped step logs (stderr) would sit between → and ✓ and break
+        # cursor-up overwrite; that mode is for --no-logs / WARNING+.
+        return logging.getLogger("argus").level >= logging.WARNING
+
+    def _emit_test_line(self, markup: str, *, replace: bool = False) -> None:
+        """Print a test status line, optionally overwriting the previous one."""
+        if replace and self._can_overwrite():
+            # Move to previous line and clear it, then rewrite in place.
+            self.console.file.write("\r\x1b[1A\x1b[2K")
+            self.console.file.flush()
+        self.console.print(markup)
+
     def _on_TestStarted(self, event: TestStarted) -> None:  # noqa: N802
         if event.feature != self._current_feature:
             self._current_feature = event.feature
+            self._replaceable = False
             if not self.quiet:
                 self.console.print(f"\n[bold]{event.feature}[/bold]\n")
+        progress = self._assign_progress()
+        if self.quiet:
+            return
+        platform = f" ({event.platform})" if event.platform else ""
+        line = (
+            f"[cyan]→[/cyan] {progress} - {event.test_id:<10} "
+            f"{event.name:<40}{platform}"
+        )
+        # Retries refresh the same running line instead of stacking another →.
+        self._emit_test_line(line, replace=self._replaceable)
+        self._replaceable = True
+
+    def _assign_progress(self) -> str:
+        """Assign (or reuse) a 1-based ``i/N`` label for the in-flight test.
+
+        Reuses the existing label on retries so a second ``TestStarted`` does
+        not advance the counter before completion.
+        """
+        if self._current_progress is None:
+            self._test_index += 1
+            if self._total_tests > 0:
+                self._current_progress = f"{self._test_index}/{self._total_tests}"
+            else:
+                self._current_progress = str(self._test_index)
+        return self._current_progress
+
+    def _consume_progress(self) -> str:
+        """Return progress for the completing test; assign if start was skipped."""
+        label = self._assign_progress()
+        self._current_progress = None
+        return label
 
     def _test_line(self, result: TestResult, symbol: str, style: str) -> str:
         platform = f" ({result.platform})" if result.platform else ""
+        progress = self._consume_progress()
         return (
-            f"[{style}]{symbol}[/{style}] {result.test_id:<10} "
+            f"[{style}]{symbol}[/{style}] {progress} - {result.test_id:<10} "
             f"{result.name:<40}{platform}  {format_duration(result.duration)}"
         )
 
+    def _finish_test_line(self, markup: str) -> None:
+        self._emit_test_line(markup, replace=True)
+        self._replaceable = False
+
     def _on_TestPassed(self, event: TestPassed) -> None:  # noqa: N802
+        line = self._test_line(event.result, "✓", "green")
         if not self.quiet:
-            self.console.print(self._test_line(event.result, "✓", "green"))
+            self._finish_test_line(line)
 
     def _on_TestSkipped(self, event: TestSkipped) -> None:  # noqa: N802
+        line = self._test_line(event.result, "-", "dim")
         if not self.quiet:
-            self.console.print(self._test_line(event.result, "-", "dim"))
+            self._finish_test_line(line)
 
     def _on_TestFailed(self, event: TestFailed) -> None:  # noqa: N802
         result = event.result
-        self.console.print(self._test_line(result, "✗", "red"))
+        self._finish_test_line(self._test_line(result, "✗", "red"))
         failed_step = next((s for s in result.steps if not s.passed), None)
         if failed_step is not None:
             self.console.print(f"\n    Failed step: {failed_step.action}")
@@ -141,6 +212,12 @@ class ConsoleReporter:
     def _on_TestRunCompleted(self, event: TestRunCompleted) -> None:  # noqa: N802
         result = event.result
         if result.status == RunStatus.PREFLIGHT_FAILED:
+            return
+        if result.status == RunStatus.SETUP_FAILED:
+            self.console.print()
+            self.console.print("[bold red]SETUP FAILED[/bold red]")
+            if result.stop_reason:
+                self.console.print(result.stop_reason)
             return
         self.console.print()
         if result.stopped_early:

@@ -31,12 +31,15 @@ from argus.reporting import (
 )
 from argus.reporting.alerts import Alert, AlertSeverity, ConsoleAlertProvider
 
+_RUN_PANEL = "Run options"
+
 app = typer.Typer(
     name="argus",
     help="Argus — Universal Cross-Platform Functional & Visual Testing Framework.",
     no_args_is_help=True,
     add_completion=False,
     pretty_exceptions_show_locals=False,
+    context_settings={"max_content_width": 100},
 )
 console = Console(highlight=False)
 
@@ -46,6 +49,19 @@ class _CLIState:
     log_level: str = "INFO"
     verbose: bool = False
     quiet: bool = False
+    no_logs: bool = False
+    # Run options (also accepted on `argus run`); set from the root callback
+    # so they appear under "Run options" on `argus --help`.
+    test: list[str] | None = None
+    feature: list[str] | None = None
+    tag: list[str] | None = None
+    platform: list[str] | None = None
+    all_tests: bool = False
+    stop_on_failure: bool = True
+    max_failures: int | None = None
+    skip_preflight: bool = False
+    skip_to: int | None = None
+    save_comparisons: bool = False
 
 
 state = _CLIState()
@@ -65,6 +81,9 @@ def _configure_logging(config: AppConfig) -> None:
         level = "DEBUG"
     elif state.quiet:
         level = "ERROR"
+    elif state.no_logs:
+        # Keep Rich progress (→ / ✓ / ✗); hide timestamped INFO step lines.
+        level = "WARNING"
     elif state.log_level == "INFO":
         level = config.logging.level
     configure_logging(level, config.logging.format, config.logging.file)
@@ -79,18 +98,126 @@ def main(
     log_level: Annotated[
         str, typer.Option("--log-level", help="DEBUG, INFO, WARNING, ERROR.")
     ] = "INFO",
-    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
-    quiet: Annotated[bool, typer.Option("--quiet", "-q")] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="DEBUG logging (overrides --log-level)."),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Errors only; minimal console output."),
+    ] = False,
+    no_logs: Annotated[
+        bool,
+        typer.Option(
+            "--no-logs",
+            help="Hide timestamped INFO log lines; keep test progress output.",
+        ),
+    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Validate environment and tests without executing."),
     ] = False,
     version: Annotated[bool, typer.Option("--version", help="Show version.")] = False,
+    # -- Run options (shown on `argus --help` under this panel) --------------------
+    test: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--test",
+            "-t",
+            help="Run specific test ID(s).",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    feature: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--feature",
+            "-f",
+            help="Filter by feature.",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--tag",
+            help='Filter by tag (or expression: "smoke and movies").',
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    platform: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--platform",
+            "-p",
+            help="Filter by platform.",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    all_tests: Annotated[
+        bool,
+        typer.Option("--all", help="Run every test.", rich_help_panel=_RUN_PANEL),
+    ] = False,
+    stop_on_failure: Annotated[
+        bool,
+        typer.Option(
+            "--stop-on-failure/--continue-on-failure",
+            help="Stop at the first failure (default) or keep going.",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = True,
+    max_failures: Annotated[
+        int | None,
+        typer.Option(
+            "--max-failures",
+            help="Stop after N failures.",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    skip_preflight: Annotated[
+        bool,
+        typer.Option(
+            "--skip-preflight",
+            help="Skip pre-flight checks (not recommended).",
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = False,
+    skip_to: Annotated[
+        int | None,
+        typer.Option(
+            "--skip-to",
+            help="1-based test number to start at (after other filters; keeps i/N numbering).",
+            min=1,
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    save_comparisons: Annotated[
+        bool,
+        typer.Option(
+            "--save-comparisons",
+            help=(
+                "Keep actual/expected/diff images for image verifies "
+                "(incl. passes) in the HTML report."
+            ),
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = False,
 ) -> None:
     state.config_file = config
     state.log_level = log_level
     state.verbose = verbose
     state.quiet = quiet
+    state.no_logs = no_logs
+    state.test = test
+    state.feature = feature
+    state.tag = tag
+    state.platform = platform
+    state.all_tests = all_tests
+    state.stop_on_failure = stop_on_failure
+    state.max_failures = max_failures
+    state.skip_preflight = skip_preflight
+    state.skip_to = skip_to
+    state.save_comparisons = save_comparisons
     if version:
         console.print(f"argus {__version__}")
         raise typer.Exit(0)
@@ -111,42 +238,127 @@ def run(
         Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     test: Annotated[
-        list[str] | None, typer.Option("--test", "-t", help="Run specific test ID(s).")
+        list[str] | None,
+        typer.Option(
+            "--test",
+            "-t",
+            help="Run specific test ID(s).",
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = None,
     feature: Annotated[
-        list[str] | None, typer.Option("--feature", "-f", help="Filter by feature.")
+        list[str] | None,
+        typer.Option(
+            "--feature",
+            "-f",
+            help="Filter by feature.",
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = None,
     tag: Annotated[
         list[str] | None,
-        typer.Option("--tag", help='Filter by tag (or expression: "smoke and movies").'),
+        typer.Option(
+            "--tag",
+            help='Filter by tag (or expression: "smoke and movies").',
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = None,
     platform: Annotated[
-        list[str] | None, typer.Option("--platform", "-p", help="Filter by platform.")
+        list[str] | None,
+        typer.Option(
+            "--platform",
+            "-p",
+            help="Filter by platform.",
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = None,
-    all_tests: Annotated[bool, typer.Option("--all", help="Run every test.")] = False,
+    all_tests: Annotated[
+        bool,
+        typer.Option("--all", help="Run every test.", rich_help_panel=_RUN_PANEL),
+    ] = False,
     stop_on_failure: Annotated[
         bool,
         typer.Option(
             "--stop-on-failure/--continue-on-failure",
             help="Stop at the first failure (default) or keep going.",
+            rich_help_panel=_RUN_PANEL,
         ),
     ] = True,
     max_failures: Annotated[
-        int | None, typer.Option("--max-failures", help="Stop after N failures.")
+        int | None,
+        typer.Option(
+            "--max-failures",
+            help="Stop after N failures.",
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = None,
     skip_preflight: Annotated[
-        bool, typer.Option("--skip-preflight", help="Skip pre-flight checks (not recommended).")
+        bool,
+        typer.Option(
+            "--skip-preflight",
+            help="Skip pre-flight checks (not recommended).",
+            rich_help_panel=_RUN_PANEL,
+        ),
     ] = False,
-    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    skip_to: Annotated[
+        int | None,
+        typer.Option(
+            "--skip-to",
+            help="1-based test number to start at (after other filters; keeps i/N numbering).",
+            min=1,
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = None,
+    no_logs: Annotated[
+        bool,
+        typer.Option(
+            "--no-logs",
+            help="Hide timestamped INFO log lines; keep test progress output.",
+        ),
+    ] = False,
+    save_comparisons: Annotated[
+        bool,
+        typer.Option(
+            "--save-comparisons",
+            help=(
+                "Keep actual/expected/diff images for image verifies "
+                "(incl. passes) in the HTML report."
+            ),
+            rich_help_panel=_RUN_PANEL,
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Validate environment and tests without executing.",
+        ),
+    ] = False,
 ) -> None:
     """Run tests (optionally filtered by feature, tag, platform, or ID)."""
     if config is not None:
         state.config_file = config
+    if no_logs:
+        state.no_logs = True
+    # Prefer flags passed on `run`; fall back to root-callback / state values.
+    test = test or state.test
+    feature = feature or state.feature
+    tag = tag or state.tag
+    platform = platform or state.platform
+    _ = all_tests or state.all_tests  # documented; empty filters already select all
+    stop_on_failure = stop_on_failure and state.stop_on_failure
+    max_failures = max_failures if max_failures is not None else state.max_failures
+    skip_preflight = skip_preflight or state.skip_preflight
+    skip_to = skip_to if skip_to is not None else state.skip_to
+    if save_comparisons or state.save_comparisons:
+        state.save_comparisons = True
     if dry_run:
         _dry_run()
         raise typer.Exit(0)
 
     app_config = _load_config()
+    if state.save_comparisons:
+        app_config.results.save_comparison_images = True
     _configure_logging(app_config)
 
     filters = _build_filter(test, feature, tag, platform)
@@ -175,8 +387,13 @@ def run(
             max_failures=max_failures,
         ),
         skip_preflight=skip_preflight,
+        skip_to=skip_to,
     )
-    result = runner.run(options)
+    try:
+        result = runner.run(options)
+    except UTFError as exc:
+        console.print(f"[bold red]TEST DEFINITION ERROR[/bold red]\n{exc}")
+        raise typer.Exit(2) from exc
 
     if result.status == RunStatus.PREFLIGHT_FAILED:
         ConsoleAlertProvider().alert(
@@ -189,11 +406,22 @@ def run(
         _write_preflight_report(app_config, result)
         raise typer.Exit(3)
 
+    if result.status == RunStatus.SETUP_FAILED:
+        ConsoleAlertProvider().alert(
+            Alert(
+                title="SETUP FAILED",
+                message=result.stop_reason or "Config setup commands failed.",
+                severity=AlertSeverity.ERROR,
+            )
+        )
+        raise typer.Exit(3)
+
     if result.results_dir:
         results_dir = Path(result.results_dir)
         write_json_report(result, results_dir / "report.json")
         write_junit_report(result, results_dir / "junit.xml")
-        write_html_report(result, results_dir / "report.html")
+        html_path = write_html_report(result, results_dir / "report.html")
+        console.print(f"HTML report: {html_path}")
 
     raise typer.Exit(0 if result.status == RunStatus.PASSED else 1)
 
@@ -316,10 +544,17 @@ def list_tests(
         Path | None, typer.Option("--config", "-c", help="Configuration file.")
     ] = None,
     feature: Annotated[
-        list[str] | None, typer.Option("--feature", "-f")
+        list[str] | None,
+        typer.Option("--feature", "-f", help="Filter by feature."),
     ] = None,
-    tag: Annotated[list[str] | None, typer.Option("--tag")] = None,
-    platform: Annotated[list[str] | None, typer.Option("--platform", "-p")] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help='Filter by tag (or expression: "smoke and movies").'),
+    ] = None,
+    platform: Annotated[
+        list[str] | None,
+        typer.Option("--platform", "-p", help="Filter by platform."),
+    ] = None,
 ) -> None:
     """List tests grouped by feature."""
     if config is not None:

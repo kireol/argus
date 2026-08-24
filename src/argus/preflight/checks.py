@@ -6,11 +6,15 @@ actually need are checked as *required*; everything else is informational.
 
 from __future__ import annotations
 
+import os
+import socket
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from argus.config.models import PreflightTcpService
 from argus.models.results import PreflightResult
 from argus.models.test_definition import ConditionSpec, TestDefinition
+from argus.utilities.variables import expand_variables
 
 if TYPE_CHECKING:
     from argus.engine.session import RunSession
@@ -375,6 +379,96 @@ def uses_instrumentation(tests: list[TestDefinition]) -> bool:
     )
 
 
+class TcpServiceCheck(PreflightCheck):
+    """TCP reachability for a configured host:port (e.g. GelOS DataPipe)."""
+
+    def __init__(self, session: RunSession, service: PreflightTcpService) -> None:
+        self._session = session
+        self._service = service
+        self.required = service.required
+        self.target = service.address
+
+    @property
+    def name(self) -> str:
+        return f"Service: {self._service.name}"
+
+    def run(self) -> PreflightResult:
+        variables = {**os.environ, **{k: str(v) for k, v in self._session.config.variables.items()}}
+        try:
+            address = expand_variables(
+                self._service.address,
+                variables,
+                strict=True,
+                source=f"preflight.services[{self._service.name}].address",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._result(
+                False,
+                error=f"Could not resolve service address: {exc}",
+                remediation="Fix preflight.services[].address or define the referenced variables.",
+            )
+        if not isinstance(address, str) or not address.strip():
+            return self._result(
+                False,
+                error="Service address is empty after variable expansion.",
+                remediation="Set a host:port in preflight.services[].address.",
+            )
+        address = address.strip()
+        self.target = address
+        try:
+            host, port = _parse_tcp_address(address)
+        except ValueError as exc:
+            return self._result(
+                False,
+                error=str(exc),
+                remediation="Use host:port (for IPv6, [addr]:port).",
+                address=address,
+            )
+        timeout = self._service.timeout_seconds
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                pass
+        except OSError as exc:
+            remediation = self._service.remediation or (
+                f"Start the service listening on {address} and retry."
+            )
+            return self._result(
+                False,
+                error=f"Cannot connect to {address}: {exc}",
+                remediation=remediation,
+                causes=["Service not running", "Wrong host/port", "Firewall/network block"],
+                address=address,
+                host=host,
+                port=port,
+            )
+        return self._result(True, address=address, host=host, port=port)
+
+
+def _parse_tcp_address(address: str) -> tuple[str, int]:
+    """Parse ``host:port`` or ``[ipv6]:port`` into (host, port)."""
+    if address.startswith("["):
+        end = address.find("]")
+        if end < 0 or end + 1 >= len(address) or address[end + 1] != ":":
+            raise ValueError(f"Invalid IPv6 service address {address!r}; expected [addr]:port.")
+        host = address[1:end]
+        port_text = address[end + 2 :]
+    else:
+        if ":" not in address:
+            raise ValueError(f"Invalid service address {address!r}; expected host:port.")
+        host, _, port_text = address.rpartition(":")
+        if not host:
+            raise ValueError(f"Invalid service address {address!r}; host is empty.")
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid service address {address!r}; port must be an integer."
+        ) from exc
+    if not (1 <= port <= 65535):
+        raise ValueError(f"Invalid service address {address!r}; port out of range.")
+    return host, port
+
+
 def build_preflight_checks(
     session: RunSession,
     tests: list[TestDefinition],
@@ -389,6 +483,9 @@ def build_preflight_checks(
     backend_required = uses_backend(tests)
     if backend_required or session.config.backend.configured:
         checks.append(BackendConnectivityCheck(session, required=backend_required))
+
+    for service in session.config.preflight.services:
+        checks.append(TcpServiceCheck(session, service))
 
     instrumentation_required = uses_instrumentation(tests)
     for name in device_names:

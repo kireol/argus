@@ -5,8 +5,14 @@ argus [GLOBAL OPTIONS] COMMAND [OPTIONS]
 ```
 
 Global options (before the command): `--config/-c FILE`, `--log-level LEVEL`,
-`--verbose/-v`, `--quiet/-q`, `--dry-run`, `--version`.
-`--config` is also accepted directly on `run`, `list`, and `validate`.
+`--verbose/-v`, `--quiet/-q`, `--no-logs`, `--dry-run`, `--version`.
+`--config` is also accepted on `run`, `list`, and `validate`.
+
+`argus --help` and `argus run --help` both list filter / failure-policy flags
+under **Run options** (`--test`, `--feature`, `--tag`, `--platform`, `--all`,
+`--stop-on-failure` / `--continue-on-failure`, `--max-failures`,
+`--skip-preflight`, `--skip-to`, `--save-comparisons`). Those flags work as
+`argus run --feature movies` or `argus --feature movies run`.
 
 ## argus run
 
@@ -21,7 +27,14 @@ argus run --tag smoke                       # by tag (repeatable, ANDed)
 argus run --tag "smoke and not slow"        # boolean tag expression
 argus run --platform android                # by platform
 argus run --platform android --feature movies --tag smoke   # combined
+argus run --skip-to 68                      # resume at console test number 68
+argus run --save-comparisons                # keep image compare artifacts on pass too
+argus run --no-logs                         # progress only; hide timestamped INFO lines
 ```
+
+`--skip-to N` starts at the Nth test in the filtered suite (1-based),
+matching the `N/M` progress shown in the console. Earlier tests are not
+executed; progress still shows `68/70`, `69/70`, …
 
 Failure policy (spec §24 — centralized, default stop-on-failure):
 
@@ -32,13 +45,18 @@ argus run --max-failures 5         # stop after N failures
 ```
 
 Other flags: `--skip-preflight` (not recommended), `--dry-run`,
-`--config FILE`.
+`--config FILE`, `--no-logs` (hide timestamped INFO lines like `shell.run`;
+keep `→` / `✓` / `✗` progress), `--save-comparisons` (keep actual/expected/diff
+images for image verifies so `report.html` can show them — also
+`results.save_comparison_images: true` in config).
 
 Exit codes: `0` all passed · `1` failures (or no tests matched) ·
 `2` configuration/definition error · `3` preflight failed.
 
 Reports land in `results/<timestamp>/`: `report.json`, `junit.xml`,
-`report.html`, plus per-test artifact directories for failures.
+`report.html` (tests grouped by feature, with failure details and embedded
+`actual` / `expected` / `diff` / screenshot images when present), plus per-test
+artifact directories for failures.
 
 ## argus validate
 
@@ -102,6 +120,7 @@ Prints the framework version.
 ```bash
 argus run --verbose            # DEBUG level
 argus run --quiet              # errors only, minimal console output
+argus run --no-logs            # keep progress; hide timestamped INFO lines
 argus run --log-level DEBUG    # explicit level
 ```
 
