@@ -100,6 +100,7 @@ condition:
 | `application_state` | `key` (dotted), `equals` or `contains` | app's `/test/state` value matches |
 | `backend_value` | `key` (dotted), `equals`, optional `endpoint` | backend state value matches |
 | `log_contains` | `text` or `pattern` (regex), `lines` (default 200), `case_sensitive` | recent device logs (logcat / `log_command` / browser console) contain the text; negate with `not:`. `pattern` is matched with `re.MULTILINE`, so `^`/`$` anchor to individual log line boundaries, not the whole scanned block |
+| `now_playing` | `state` (`playing`/`paused`/`stopped`/`idle`/`loading`/`seeking`), `title` (substring), `app_id`, `position_advancing` (+ `interval`, default 1s) | the device's media playback state matches (Apple TV via pyatv, fake); negate with `not:` |
 
 Log assertions poll like any other condition, so they work in `wait_until`:
 
@@ -109,6 +110,18 @@ Log assertions poll like any other condition, so they work in `wait_until`:
   condition:
     type: log_contains
     pattern: "Player: state=(PLAYING|BUFFERING)"
+```
+
+Playback assertions read the device's now-playing state, so a media test can
+prove playback really started:
+
+```yaml
+- action: wait_until
+  timeout: 15s
+  condition:
+    type: now_playing
+    state: playing
+    position_advancing: true
 ```
 
 ### Composition
