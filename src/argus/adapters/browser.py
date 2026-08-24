@@ -8,6 +8,7 @@ Playwright is an optional dependency (``pip install "argus[browser]"``).
 
 from __future__ import annotations
 
+import contextlib
 import io
 from collections import deque
 from collections.abc import Callable
@@ -84,6 +85,12 @@ class BrowserAdapter(Device):
         page_factory: Callable[[], PageLike] | None = None,
     ) -> None:
         super().__init__(name)
+        browser = browser.lower()
+        if browser not in _SUPPORTED_BROWSERS:
+            raise ConfigurationError(
+                f"Browser device {name!r}: unknown browser {browser!r}.",
+                remediation=f"Use one of: {', '.join(_SUPPORTED_BROWSERS)}.",
+            )
         self._url = url
         self._browser_name = browser
         self._headless = headless
@@ -106,12 +113,7 @@ class BrowserAdapter(Device):
                 f"Browser device {name!r} requires a 'url' option.",
                 remediation="Set devices.<name>.url to the application's address.",
             )
-        browser = str(options.get("browser", "chromium")).lower()
-        if browser not in _SUPPORTED_BROWSERS:
-            raise ConfigurationError(
-                f"Browser device {name!r}: unknown browser {browser!r}.",
-                remediation=f"Use one of: {', '.join(_SUPPORTED_BROWSERS)}.",
-            )
+        browser = str(options.get("browser", "chromium"))
         viewport = options.get("viewport", [1280, 720])
         return cls(
             name,
@@ -183,7 +185,8 @@ class BrowserAdapter(Device):
         playwright, self._playwright = self._playwright, None
         try:
             if browser is not None:
-                browser.close()
+                with contextlib.suppress(Exception):
+                    browser.close()
         finally:
             if playwright is not None:
                 playwright.stop()
@@ -207,14 +210,29 @@ class BrowserAdapter(Device):
         page = self._open_page()
         page.on("console", self._on_console)
         self._page = page
-        self.start_application()
+        try:
+            self.start_application()
+        except Exception as exc:  # noqa: BLE001 - Playwright raises its own Error type
+            with contextlib.suppress(Exception):
+                page.close()
+            self._teardown_playwright()
+            self._page = None
+            self._app_running = False
+            raise DeviceConnectionError(
+                f"Unable to open {self._url}: {exc}",
+                remediation="Check the application is running and devices.<name>.url is reachable.",
+            ) from exc
 
     def disconnect(self) -> None:
         page, self._page = self._page, None
         self._app_running = False
-        if page is not None and not page.is_closed():
-            page.close()
-        self._teardown_playwright()
+        try:
+            if page is not None:
+                with contextlib.suppress(Exception):
+                    if not page.is_closed():
+                        page.close()
+        finally:
+            self._teardown_playwright()
 
     def is_available(self) -> bool:
         if self._page_factory is not None:
