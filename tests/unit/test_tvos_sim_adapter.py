@@ -168,6 +168,22 @@ class TestConnection:
         with pytest.raises(DeviceConnectionError, match="not connected"):
             sim.screenshot()
 
+    def test_connect_recovers_from_log_stream_failure(self, runner, process):
+        def failing_spawn(argv):
+            raise RuntimeError("spawn failed")
+
+        adapter = TvosSimAdapter(
+            "sim", bundle_id="com.example.tv", runner=runner, spawner=failing_spawn
+        )
+        with pytest.raises(DeviceConnectionError, match="spawn failed"):
+            adapter.connect()
+        assert adapter._udid is None
+        assert not adapter.is_application_running()
+
+        adapter._spawn = lambda argv: process
+        adapter.connect()
+        assert adapter._udid == UDID
+
 
 class TestLifecycle:
     def test_start_stop_reset(self, sim, runner, tmp_path):
@@ -262,6 +278,18 @@ class TestInput:
         sim.connect()
         with pytest.raises(DeviceConnectionError, match="Accessibility"):
             sim.press_key("ENTER")
+
+    def test_press_key_escapes_double_quote(self, sim, runner):
+        sim.connect()
+        sim.press_key('"')
+        script = runner.calls[-1]
+        assert any('keystroke "\\""' in part for part in script)
+
+    def test_press_key_escapes_backslash(self, sim, runner):
+        sim.connect()
+        sim.press_key("\\")
+        script = runner.calls[-1]
+        assert any('keystroke "\\\\"' in part for part in script)
 
 
 class TestConfig:
