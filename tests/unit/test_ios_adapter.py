@@ -398,3 +398,25 @@ class TestLogs:
             adapter.connect()
         # connect failed after the session was created: it must be cleaned up
         assert ("DELETE", "/session/S1", None) in wda.calls
+
+    def test_non_connection_spawn_error_is_wrapped_and_cleaned_up(self, wda):
+        def spawn(argv):
+            raise PermissionError("denied")
+
+        adapter = IosAdapter(
+            "iphone", bundle_id="com.example.app", log_command="idevicesyslog",
+            client_factory=lambda: wda, spawner=spawn,
+        )
+        with pytest.raises(DeviceConnectionError, match="denied"):
+            adapter.connect()
+        assert ("DELETE", "/session/S1", None) in wda.calls
+
+    def test_blank_log_command_behaves_as_unset(self, wda):
+        adapter = IosAdapter(
+            "iphone", bundle_id="com.example.app", log_command="",
+            client_factory=lambda: wda,
+        )
+        assert adapter.capabilities.supports_logs is False
+        adapter.connect()
+        with pytest.raises(DeviceCapabilityError, match="get_logs"):
+            adapter.get_logs()
