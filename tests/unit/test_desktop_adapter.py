@@ -17,7 +17,7 @@ from argus.adapters.desktop import (
     _pyautogui_backend,
 )
 from argus.config.models import DeviceConfig
-from argus.exceptions import ConfigurationError, DeviceConnectionError
+from argus.exceptions import ConfigurationError, DeviceConnectionError, ScreenshotError
 
 _CHILD = (
     "import sys, time\n"
@@ -337,3 +337,55 @@ class TestLifecycle:
         adapter.start_application()
         adapter.disconnect()
         assert not adapter.is_application_running()
+
+
+class TestObservation:
+    def test_screenshot_is_rgb_full_screen(self, adapter, backend):
+        adapter.connect()
+        img = adapter.screenshot()
+        assert img.mode == "RGB" and img.size == (800, 600)
+
+    def test_region_crops_screenshot(self, backend):
+        adapter = DesktopAdapter(
+            "app", command="x", region=(10, 20, 300, 200), backend_factory=lambda: backend
+        )
+        adapter.connect()
+        assert adapter.screenshot().size == (300, 200)
+        info = adapter.get_screen_info()
+        assert (info.width, info.height) == (300, 200)
+
+    def test_region_outside_screen_is_error(self, backend):
+        adapter = DesktopAdapter(
+            "app", command="x", region=(700, 500, 300, 200), backend_factory=lambda: backend
+        )
+        adapter.connect()
+        with pytest.raises(ScreenshotError, match="region"):
+            adapter.screenshot()
+
+    def test_hidpi_ratio_from_screenshot_vs_logical(self):
+        backend = FakeBackend(logical=(800, 600), pixels=(1600, 1200))
+        adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
+        adapter.connect()
+        assert adapter._pixel_ratio() == 2.0
+        assert adapter._to_logical((200, 100)) == (100, 50)
+        adapter._pixel_ratio()
+        assert backend.calls.count(("screenshot", ())) == 1  # ratio is cached
+        info = adapter.get_screen_info()
+        assert (info.width, info.height, info.scale) == (1600, 1200, 2.0)
+
+    def test_to_logical_adds_region_offset(self):
+        backend = FakeBackend(logical=(800, 600), pixels=(1600, 1200))
+        adapter = DesktopAdapter(
+            "app", command="x", region=(100, 40, 400, 400), backend_factory=lambda: backend
+        )
+        adapter.connect()
+        # pixel (10, 10) inside the region = pixel (110, 50) on screen = logical (55, 25)
+        assert adapter._to_logical((10, 10)) == (55, 25)
+
+    def test_black_screenshot_on_macos_mentions_permission(self, monkeypatch, backend):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        backend.fill = (0, 0, 0)
+        adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
+        adapter.connect()
+        with pytest.raises(ScreenshotError, match="Screen Recording"):
+            adapter.screenshot()
