@@ -246,6 +246,14 @@ class TestConfig:
         with pytest.raises(ConfigurationError, match="region"):
             DesktopAdapter.from_config("app", config)
 
+    def test_from_config_rejects_non_positive_region(self):
+        for region in ([1, 2, 0, 5], [1, 2, 5, -1]):
+            config = DeviceConfig.model_validate(
+                {"type": "desktop", "command": "x", "region": region}
+            )
+            with pytest.raises(ConfigurationError, match="region"):
+                DesktopAdapter.from_config("app", config)
+
 
 class TestLifecycle:
     def test_start_captures_logs_and_stop_terminates(self, adapter):
@@ -327,6 +335,19 @@ class TestLifecycle:
             adapter.reset_application()
         assert not adapter.is_application_running()
 
+    def test_reset_command_timeout_is_connection_error(self, backend, monkeypatch):
+        monkeypatch.setattr("argus.adapters.desktop._RESET_TIMEOUT", 0.2)
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", _CHILD],
+            reset_command=f"{sys.executable} -c \"import time; time.sleep(30)\"",
+            stop_timeout=0.2,
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        with pytest.raises(DeviceConnectionError, match="timed out"):
+            adapter.reset_application()
+        assert not adapter.is_application_running()
+
     def test_stop_when_not_running_is_noop(self, adapter):
         adapter.connect()
         adapter.stop_application()
@@ -385,7 +406,13 @@ class TestObservation:
     def test_black_screenshot_on_macos_mentions_permission(self, monkeypatch, backend):
         monkeypatch.setattr(sys, "platform", "darwin")
         backend.fill = (0, 0, 0)
+        black_adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
+        with pytest.raises(DeviceConnectionError, match="Screen Recording"):
+            black_adapter.connect()
+
+        backend.fill = (10, 20, 30)
         adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
         adapter.connect()
-        with pytest.raises(ScreenshotError, match="Screen Recording"):
-            adapter.screenshot()
+        backend.fill = (0, 0, 0)
+        img = adapter.screenshot()
+        assert img.mode == "RGB"

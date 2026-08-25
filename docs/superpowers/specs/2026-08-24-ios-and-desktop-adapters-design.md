@@ -227,7 +227,7 @@ log buffer and the cached pixel ratio.
 
 | `Device` method | Implementation |
 | --- | --- |
-| `connect()` | create backend (import check), `size()` must succeed (a missing display raises `DeviceConnectionError` with the OS-specific remediation) |
+| `connect()` | create backend (import check), `size()` must succeed (a missing display raises `DeviceConnectionError` with the OS-specific remediation); on macOS, one screenshot probe — all black → `DeviceConnectionError` (Screen Recording permission) |
 | `disconnect()` | `stop_application()` if running |
 | `is_available()` | backend importable and `size()` works |
 | `health_check()` | screen size + `app_running` |
@@ -235,7 +235,7 @@ log buffer and the cached pixel ratio.
 | `stop_application()` | `terminate()`; wait `stop_timeout`; `kill()` if still alive |
 | `reset_application()` | stop → `reset_command` (via `subprocess.run`, non-zero exit → `DeviceConnectionError`) → start |
 | `is_application_running()` | process exists and `poll() is None` |
-| `screenshot()` | `backend.screenshot()` (PIL image) → RGB; cropped to `region` if set; a fully black image on macOS → `ScreenshotError` mentioning Screen Recording permission |
+| `screenshot()` | `backend.screenshot()` (PIL image) → RGB; cropped to `region` if set; (the macOS Screen Recording check happens once in `connect()`: an all-black capture before the app is launched → `DeviceConnectionError`) |
 | `get_screen_info()` | screenshot size in pixels (respecting `region`); pixel ratio = screenshot width ÷ `size().width`, cached |
 | `get_logs(lines)` | last `lines` of the process output buffer |
 | `tap(x, y)` | `click(px(x), px(y))` |
