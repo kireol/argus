@@ -67,11 +67,11 @@ def register_builtin_devices(registry: DeviceRegistry) -> None:
     registry.register("android", AndroidAdapter.from_config)
     registry.register("browser", BrowserAdapter.from_config)
     registry.register("esp32", Esp32Adapter.from_config)
+    registry.register("ios", IosAdapter.from_config)
     registry.register("roku", RokuAdapter.from_config)
     registry.register("tvos_sim", TvosSimAdapter.from_config)
     registry.register("yocto", YoctoAdapter.from_config)
     registry.register("fake", FakeDevice.from_config)
-    registry.register("ios", IosAdapter.from_config)
 
 
 _default_registry = DeviceRegistry()

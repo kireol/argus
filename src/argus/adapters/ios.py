@@ -127,18 +127,13 @@ def _decode(raw: bytes) -> dict[str, Any]:
 _DOWN = {"type": "pointerDown", "button": 0}
 _UP = {"type": "pointerUp", "button": 0}
 
-_BUTTONS = {"VOLUME_UP": "volumeUp", "VOLUME_DOWN": "volumeDown", "LOCK": "lock"}
+_BUTTONS = {"VOLUME_UP": "volumeUp", "VOLUME_DOWN": "volumeDown"}
 _KEY_TEXT = {"ENTER": "\n", "DPAD_CENTER": "\n", "DEL": "\b", "BACKSPACE": "\b", "TAB": "\t",
              "SPACE": " "}
 
 
 def _pause(duration_ms: int) -> dict[str, Any]:
     return {"type": "pause", "duration": duration_ms}
-
-
-def _num(value: float) -> float | int:
-    """Render whole numbers as ints so request bodies read like the docs."""
-    return int(value) if float(value).is_integer() else value
 
 
 Spawner = Callable[[list[str]], Any]
@@ -189,6 +184,7 @@ class IosAdapter(Device):
         self._spawn: Spawner = spawner or _subprocess_spawner
         self._session_id: str | None = None
         self._scale: float | None = None
+        self._screenshot_px: tuple[int, int] | None = None
         self._screen_info: ScreenInfo | None = None
         self._logs: deque[str] = deque(maxlen=_MAX_LOG_LINES)
         self._log_process: Any = None
@@ -249,6 +245,8 @@ class IosAdapter(Device):
     # -- connection -------------------------------------------------------------------------
 
     def connect(self) -> None:
+        if self._session_id is not None:
+            self.disconnect()
         self._client.request("GET", "/status")
         payload = self._client.request(
             "POST",
@@ -263,6 +261,7 @@ class IosAdapter(Device):
             )
         self._session_id = str(session_id)
         self._scale = None
+        self._screenshot_px = None
         self._screen_info = None
         if self._log_command:
             try:
@@ -333,22 +332,49 @@ class IosAdapter(Device):
                 remediation="Check the device is unlocked and WDA is attached to it.",
             ) from exc
 
+    def _fallback_scale(self) -> float:
+        screen = self._client.request("GET", self._session_path("/wda/screen"))
+        value = (screen.get("value") or {}).get("scale")
+        return float(value) if value else 1.0
+
+    def _measure_scale(self) -> None:
+        """Measure pixels-per-point from a screenshot; fall back to ``/wda/screen``.
+
+        ``UIScreen.scale`` does not reflect the screenshot on downsampling
+        devices (Plus models, Display Zoom), so taps land off-target if it is
+        trusted directly. Measuring screenshot pixels against window points
+        gives the ratio WDA is actually using.
+        """
+        try:
+            img = self.screenshot()
+            size = self._client.request("GET", self._session_path("/window/size")).get("value")
+            width = float((size or {}).get("width", 0))
+        except (ScreenshotError, DeviceConnectionError):
+            self._scale = self._fallback_scale()
+            self._screenshot_px = None
+            return
+        if img.width > 0 and width > 0:
+            self._scale = img.width / width
+            self._screenshot_px = (img.width, img.height)
+        else:
+            self._scale = self._fallback_scale()
+            self._screenshot_px = None
+
     def _pixel_scale(self) -> float:
         if self._scale is None:
-            screen = self._client.request("GET", self._session_path("/wda/screen"))
-            value = (screen.get("value") or {}).get("scale")
-            self._scale = float(value) if value else 1.0
+            self._measure_scale()
+        assert self._scale is not None
         return self._scale
 
     def get_screen_info(self) -> ScreenInfo:
         if self._screen_info is None:
-            size = self._client.request("GET", self._session_path("/window/size")).get("value")
-            size = size or {}
             scale = self._pixel_scale()
-            self._screen_info = ScreenInfo(
-                width=round(float(size.get("width", 0)) * scale),
-                height=round(float(size.get("height", 0)) * scale),
-            )
+            if self._screenshot_px is not None:
+                width, height = self._screenshot_px
+            else:
+                img = self.screenshot()
+                width, height = img.width, img.height
+            self._screen_info = ScreenInfo(width=width, height=height, scale=scale)
         return self._screen_info
 
     def _to_points(self, point: Point) -> tuple[float, float]:
@@ -359,7 +385,7 @@ class IosAdapter(Device):
 
     def _move(self, point: Point, duration_ms: int) -> dict[str, Any]:
         x, y = self._to_points(point)
-        return {"type": "pointerMove", "duration": duration_ms, "x": _num(x), "y": _num(y)}
+        return {"type": "pointerMove", "duration": duration_ms, "x": round(x), "y": round(y)}
 
     @staticmethod
     def _finger(index: int, actions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -372,8 +398,6 @@ class IosAdapter(Device):
 
     def _perform(self, sources: list[dict[str, Any]]) -> None:
         self._post("/actions", {"actions": sources})
-        with contextlib.suppress(DeviceConnectionError):
-            self._client.request("DELETE", self._session_path("/actions"))
 
     def tap(self, x: int, y: int) -> None:
         self._perform([self._finger(0, [self._move((x, y), 0), _DOWN, _UP])])
@@ -426,7 +450,14 @@ class IosAdapter(Device):
         name = key.removeprefix("KEYCODE_")
         upper = name.upper()
         if upper == "HOME":
-            self._post("/wda/homescreen", {})
+            # WDA registers this route session-less; still require a session first
+            # so pre-connect use fails the same way as every other key.
+            self._require_session()
+            self._client.request("POST", "/wda/homescreen", {})
+        elif upper == "LOCK":
+            self._post("/wda/lock", {})
+        elif upper == "UNLOCK":
+            self._post("/wda/unlock", {})
         elif upper in _BUTTONS:
             self._post("/wda/pressButton", {"name": _BUTTONS[upper]})
         else:
