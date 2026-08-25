@@ -127,6 +127,14 @@ class RunSession:
                 client = FakeInstrumentation(
                     status=dict(instr.status) or None, state=dict(instr.state) or None
                 )
+            elif instr.type == "device":
+                client = self.device(device_name).instrumentation_client()
+                if client is None:
+                    raise ConfigurationError(
+                        f"Device {device_name!r} does not provide instrumentation.",
+                        remediation="Use a device type with a serial agent (esp32) or set "
+                        "instrumentation.type to http/fake.",
+                    )
             elif instr.configured:
                 client = HttpInstrumentationClient(instr)
         self._instrumentation[device_name] = client
