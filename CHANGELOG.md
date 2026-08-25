@@ -25,6 +25,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
   launch/terminate, `log stream`) with remote keys sent through `osascript`.
 - `appletv` device adapter (pyatv, optional `argus[appletv]` extra): remote
   keys, app launch, and now-playing state for `now_playing` assertions.
+- `esp32` device adapter (optional `argus[esp32]` extra): serial or Wokwi
+  transport, framebuffer screenshots (mono/gray/RGB565/RGB888) via the shipped
+  Arduino/MicroPython Argus agent, key input, DTR/RTS reset, optional esptool
+  flashing, and agent status/state as `instrumentation: {type: device}`.
 
 ### Changed
 - CLI help groups filter/failure flags under a **Run options** panel on both

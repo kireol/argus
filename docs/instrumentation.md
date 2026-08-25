@@ -59,6 +59,20 @@ devices:
       # status_endpoint / health_endpoint / state_endpoint overridable
 ```
 
+Devices with a serial agent (currently `esp32`) can serve the same documents
+without an HTTP server:
+
+```yaml
+devices:
+  board:
+    type: esp32
+    platform: esp32
+    transport: serial
+    port: /dev/cu.usbserial-0001
+    instrumentation:
+      type: device            # status/state come from the firmware's Argus agent
+```
+
 ## Using it in tests
 
 ```yaml
