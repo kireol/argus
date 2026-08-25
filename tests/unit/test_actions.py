@@ -210,3 +210,73 @@ def test_actions_without_backend_fail_cleanly(registry, base_config):
 
     with pytest.raises(TestExecutionError, match="backend"):
         registry.get("backend.set").execute(context, {"data": {}})
+
+
+def test_device_gesture_actions(registry, context):
+    registry.get("device.long_press").execute(
+        context, {"x": 5, "y": 6, "duration": "2s"}
+    )
+    registry.get("device.drag").execute(
+        context,
+        {"from_x": 1, "from_y": 2, "to_x": 3, "to_y": 4, "hold": "250ms", "duration": "1s"},
+    )
+    registry.get("device.multi_touch").execute(
+        context, {"fingers": [[[0, 0], [10, 10]], [[100, 100], [90, 90]]], "duration": "400ms"}
+    )
+    device = context.device
+    assert device.long_presses == [(5, 6, 2000)]
+    assert device.drags == [(1, 2, 3, 4, 250, 1000)]
+    assert device.multi_touches == [([[(0, 0), (10, 10)], [(100, 100), (90, 90)]], 400)]
+
+
+def test_device_pinch_action_becomes_two_finger_multi_touch(registry, context):
+    registry.get("device.pinch").execute(
+        context, {"x": 500, "y": 400, "from_distance": 100, "to_distance": 300}
+    )
+    assert context.device.multi_touches == [
+        ([[(450, 400), (350, 400)], [(550, 400), (650, 400)]], 500)
+    ]
+
+
+def test_gesture_actions_use_defaults(registry, context):
+    registry.get("device.long_press").execute(context, {"x": 1, "y": 1})
+    registry.get("device.drag").execute(
+        context, {"from_x": 1, "from_y": 2, "to_x": 3, "to_y": 4}
+    )
+    device = context.device
+    assert device.long_presses == [(1, 1, 1000)]
+    assert device.drags == [(1, 2, 3, 4, 500, 500)]
+
+
+def test_multi_touch_rejects_malformed_fingers(registry, context):
+    with pytest.raises(ActionError):
+        registry.get("device.multi_touch").execute(context, {"fingers": [[[1]]]})
+    with pytest.raises(ActionError):
+        registry.get("device.multi_touch").execute(context, {"fingers": []})
+
+
+def test_gesture_actions_unsupported_device_fail_cleanly(registry, context):
+    from argus.adapters.base import Device
+
+    class _NoTouch(Device):
+        capabilities = None
+        platform = "none"
+
+        def connect(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+        def is_available(self):
+            return True
+
+        def health_check(self):
+            raise NotImplementedError
+
+    context.device = _NoTouch("tv")
+    result = registry.get("device.pinch").execute(
+        context, {"x": 1, "y": 1, "from_distance": 10, "to_distance": 20}
+    )
+    assert not result.passed
+    assert result.failure_category == "device_connection"

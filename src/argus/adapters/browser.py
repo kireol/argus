@@ -10,16 +10,22 @@ from __future__ import annotations
 
 import contextlib
 import io
+import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 from PIL import Image as PILImage
 from PIL.Image import Image
 
-from argus.adapters.base import Device, DeviceCapabilities
+from argus.adapters.base import Device, DeviceCapabilities, Point, interpolate_path
 from argus.config.models import DeviceConfig
-from argus.exceptions import ConfigurationError, DeviceConnectionError, ScreenshotError
+from argus.exceptions import (
+    ConfigurationError,
+    DeviceCapabilityError,
+    DeviceConnectionError,
+    ScreenshotError,
+)
 from argus.logging import get_logger
 from argus.models.common import HealthCheckResult, ScreenInfo
 
@@ -59,6 +65,7 @@ class PageLike(Protocol):
 
     mouse: Any
     keyboard: Any
+    context: Any
     viewport_size: dict[str, int] | None
     url: str
 
@@ -132,6 +139,9 @@ class BrowserAdapter(Device):
             supports_screenshot=True,
             supports_tap=True,
             supports_swipe=True,
+            supports_long_press=True,
+            supports_drag=True,
+            supports_multi_touch=self._browser_name == "chromium",
             supports_keyboard=True,
             supports_app_lifecycle=True,
             supports_logs=True,
@@ -303,13 +313,63 @@ class BrowserAdapter(Device):
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         mouse = self._require_page().mouse
-        steps = max(1, duration_ms // 16)  # ~60 Hz worth of intermediate events
+        steps = _steps_for(duration_ms)
         mouse.move(x1, y1)
         mouse.down()
         mouse.move(x2, y2, steps=steps)
         mouse.up()
 
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        mouse = self._require_page().mouse
+        mouse.move(x, y)
+        mouse.down()
+        time.sleep(duration_ms / 1000)
+        mouse.up()
+
+    def drag(
+        self, x1: int, y1: int, x2: int, y2: int, hold_ms: int = 500, duration_ms: int = 500
+    ) -> None:
+        mouse = self._require_page().mouse
+        mouse.move(x1, y1)
+        mouse.down()
+        time.sleep(hold_ms / 1000)
+        mouse.move(x2, y2, steps=_steps_for(duration_ms))
+        mouse.up()
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        """Real multi-finger touch via the Chrome DevTools Protocol (Chromium only)."""
+        page = self._require_page()
+        if self._browser_name != "chromium":
+            raise DeviceCapabilityError(
+                f"Browser device {self.name!r} ({self._browser_name}) cannot send "
+                "multi-touch: Playwright only exposes touch injection on chromium.",
+                remediation="Set devices.<name>.browser: chromium for multi-touch/pinch tests.",
+            )
+        session = page.context.new_cdp_session(page)
+        steps = _steps_for(duration_ms)
+        interval = duration_ms / 1000 / steps
+
+        def points(step: int) -> list[dict[str, Any]]:
+            positions = (interpolate_path(path, step, steps) for path in fingers)
+            return [{"x": x, "y": y, "id": index} for index, (x, y) in enumerate(positions)]
+
+        session.send(
+            "Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": points(0)}
+        )
+        for step in range(1, steps + 1):
+            time.sleep(interval)
+            session.send(
+                "Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": points(step)}
+            )
+        session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
     def press_key(self, key: str) -> None:
         name = key.removeprefix("KEYCODE_")
         mapped = _KEY_MAP.get(name.upper(), name)
         self._require_page().keyboard.press(mapped)
+
+
+def _steps_for(duration_ms: int) -> int:
+    """Number of intermediate events for a gesture: ~60 Hz, at least one."""
+    return max(1, duration_ms // 16)
+
