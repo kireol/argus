@@ -107,6 +107,24 @@ See `argus --help` / `argus run --help` for the full option list.
 | CLI reference | [docs/cli.md](docs/cli.md) |
 | Plugin development | [docs/plugin-development.md](docs/plugin-development.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| MCP server (AI clients) | [docs/mcp.md](docs/mcp.md) |
+
+## AI clients (MCP)
+
+Argus is also a [Model Context Protocol](https://modelcontextprotocol.io)
+server, so Claude Code, IDE assistants and CI agents can discover, run and
+debug tests through the same service layer the CLI uses:
+
+```bash
+pip install -e ".[mcp]"
+argus mcp --config config/fake.yaml            # stdio, for Claude Code / IDEs
+claude mcp add argus -- argus mcp --config config/fake.yaml
+```
+
+Tools such as `argus_list_tests`, `argus_preflight`, `argus_run_test`,
+`argus_capture_screenshot` and `argus_diagnose_run` return structured,
+bounded results; a Streamable HTTP transport with bearer-token auth serves
+shared labs and CI. See [docs/mcp.md](docs/mcp.md).
 
 ## Design in one diagram
 
@@ -122,9 +140,9 @@ Test YAML ──> Test Engine ──> Backend / Device / Instrumentation adapter
 The engine knows nothing about ADB, SSH, or HTTP specifics; those live behind
 adapter interfaces. Instrumentation is diagnostic only — a test passes only
 when the *externally observed* screen matches, never on the application's
-say-so. The CLI is a thin client of the engine's service API
-(`TestRunner`), so a future GUI can drive the same engine and subscribe to
-the same event stream.
+say-so. The CLI and the MCP server are thin clients of the service layer
+(`ArgusService` over `TestRunner`), so a future GUI can drive the same engine
+and subscribe to the same event stream.
 
 ## Developing
 
