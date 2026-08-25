@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from argus.adapters.esp32.protocol import AgentLink
+from argus.adapters.esp32.protocol import PREFIX, AgentLink
 
 AGENT_PATH = Path(__file__).resolve().parents[2] / "agents/esp32/micropython/argus_agent.py"
 
@@ -175,6 +175,31 @@ def test_overlong_line_is_discarded_without_blocking_later_commands(world):
         # a newline to terminate that (discarded) overlong line before the next real request.
         uart.inbound += b"x" * 300 + b"\n"
     info = link.hello()
+    assert info.name == "demo"
+
+
+def test_status_value_with_control_char_round_trips_through_json(world):
+    agent, _uart, _keys, link, _logs = world
+    agent.set_status("note", "line1\nline2")
+    data = json.loads(link.request("status"))
+    assert data == {"note": "line1\nline2", "screen": "home"}
+
+
+def test_overlong_line_with_command_on_same_line_is_discarded_to_newline(world):
+    """A real command appended right after overlong junk, on the *same* line (no
+    newline yet), must be discarded along with the junk - not reparsed as a fresh
+    command starting mid-line. Only a command on its own line afterwards gets a reply."""
+    _agent, uart, _keys, link, _logs = world
+    with uart.lock:
+        uart.inbound += b"x" * 300 + PREFIX + b"hello"
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        time.sleep(0.02)
+        with uart.lock:
+            assert b"hello ok" not in uart.outbound
+    with uart.lock:
+        uart.inbound += b"\n"  # terminate the discarded line
+    info = link.hello()  # fresh request, on its own line, gets a reply
     assert info.name == "demo"
 
 
