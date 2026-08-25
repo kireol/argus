@@ -222,3 +222,42 @@ retry:
 Do not assume execution order. Reset what you rely on in `setup:`
 (`device.reset`, a `backend.set` to a known state) and clean up in
 `teardown:` — teardown runs even when the test fails.
+
+## Feature-level setup and teardown
+
+Steps that every test of a feature relies on (loading a catalog, logging in,
+resetting a service) can run **once per feature** instead of in every test.
+Declare them in a top-level `features:` block next to `tests:`; the key is
+matched against each test's `feature:` case-insensitively:
+
+```yaml
+features:
+  Movies:
+    setup:                        # same actions as a test's setup:
+      - action: backend.set
+        data: { catalog: loaded }
+    teardown:                     # always runs, even if setup or a test failed
+      - action: backend.reset
+
+tests:
+  - id: MOV-001
+    feature: Movies
+    ...
+```
+
+Rules:
+
+- **Once per feature, per platform.** Tests run once per platform with a
+  device bound, so the feature's setup runs before the first selected test of
+  that feature on each platform, and teardown after its last one. If the run
+  stops early (`--stop-on-failure`, an error) every open feature is still torn
+  down.
+- **Filters apply first.** `--test`, `--tag`, `--platform` select the tests;
+  a feature with no selected tests never runs its setup.
+- **Setup failure fails the feature's tests.** They are recorded as failed
+  with `Feature setup failed: <step> — <message>` and are not executed.
+- **Teardown failures are logged** and never change a test's result.
+- A feature may be defined in one file only; defining it twice is a load
+  error, like a duplicate test ID. Defining a feature no test uses is fine.
+- Feature steps see `${variables}` from the config but not a test's
+  `parameters:`.

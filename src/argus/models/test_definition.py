@@ -92,6 +92,19 @@ class Step(BaseModel):
         return dict(self.model_extra or {})
 
 
+class FeatureDefinition(BaseModel):
+    """Feature-level lifecycle: steps run once per feature (per platform)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    setup: list[Step] = Field(default_factory=list)
+    teardown: list[Step] = Field(default_factory=list)
+
+    # Populated by the loader; not authored in YAML.
+    source_file: str | None = None
+
+
 class TestDefinition(BaseModel):
     """A complete YAML test definition."""
 

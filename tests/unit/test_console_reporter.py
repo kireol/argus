@@ -163,3 +163,33 @@ class TestConsoleProgressCounters:
         assert "→" not in text  # start lines suppressed in quiet mode
         assert "1/3" not in text  # passed line suppressed in quiet mode
         assert "2/3 - T-2" in text
+
+
+class TestFeatureLifecycleLines:
+    def test_feature_setup_and_teardown_are_reported(self):
+        from argus.events.events import (
+            FeatureSetupCompleted,
+            FeatureSetupStarted,
+            FeatureTeardownCompleted,
+            FeatureTeardownStarted,
+        )
+
+        reporter, buffer = _reporter()
+        bus = EventBus()
+        reporter.attach(bus)
+        bus.publish(TestRunStarted(total_tests=1))
+        bus.publish(FeatureSetupStarted(feature="Movies", platform="android"))
+        bus.publish(FeatureSetupCompleted(feature="Movies", platform="android", passed=True))
+        bus.publish(FeatureTeardownStarted(feature="Movies", platform="android"))
+        bus.publish(
+            FeatureTeardownCompleted(
+                feature="Movies", platform="android", passed=False, error="backend.set — boom"
+            )
+        )
+        import re
+
+        text = re.sub(r"\x1b\[[0-9;]*m", "", buffer.getvalue())
+        assert "Movies" in text
+        assert "✓ setup (android)" in text
+        assert "✗ teardown (android)" in text
+        assert "backend.set — boom" in text
