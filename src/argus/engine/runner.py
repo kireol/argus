@@ -24,12 +24,16 @@ from argus.artifacts.manager import ArtifactManager
 from argus.config.models import AppConfig
 from argus.engine.context import TestContext
 from argus.engine.filters import TestFilter
-from argus.engine.loader import load_tests
+from argus.engine.loader import TestSuite, load_suite
 from argus.engine.session import RunSession
 from argus.events.bus import EventBus
 from argus.events.events import (
     ActionCompleted,
     ActionStarted,
+    FeatureSetupCompleted,
+    FeatureSetupStarted,
+    FeatureTeardownCompleted,
+    FeatureTeardownStarted,
     TestFailed,
     TestPassed,
     TestRunCompleted,
@@ -46,7 +50,7 @@ from argus.models.results import (
     TestResult,
     TestStatus,
 )
-from argus.models.test_definition import Step, TestDefinition
+from argus.models.test_definition import FeatureDefinition, Step, TestDefinition
 from argus.preflight.checks import build_preflight_checks
 from argus.preflight.runner import run_preflight
 from argus.utilities.variables import expand_variables
@@ -91,9 +95,12 @@ class TestRunner:
 
     # -- loading ---------------------------------------------------------------------
 
-    def load(self) -> list[TestDefinition]:
+    def load_suite(self) -> TestSuite:
         paths = [self.config.resolve_path(p) for p in self.config.test_paths]
-        return load_tests(paths)
+        return load_suite(paths)
+
+    def load(self) -> list[TestDefinition]:
+        return self.load_suite().tests
 
     def select(self, filters: TestFilter) -> list[TestDefinition]:
         return filters.apply(self.load())
@@ -131,7 +138,8 @@ class TestRunner:
         options = options or RunOptions()
         started = time.monotonic()
 
-        tests = self.select(options.filters)
+        suite = self.load_suite()
+        tests = options.filters.apply(suite.tests)
         total_tests = len(tests)
         start_index = 1
         if options.skip_to is not None:
@@ -178,25 +186,39 @@ class TestRunner:
             # -- execution --------------------------------------------------------------
             failures = 0
             stopped = False
-            for test in tests:
-                if stopped:
-                    run_result.tests.append(self._skipped(test, "run stopped early"))
-                    self.events.publish(TestSkipped(result=run_result.tests[-1]))
-                    continue
+            plan = [
+                (test, platform)
+                for test in tests
+                for platform in self._platforms_for(test, options.filters, session)
+            ]
+            lifecycle = _FeatureLifecycle(self, session, artifacts, suite, plan)
+            try:
+                for test in tests:
+                    if stopped:
+                        run_result.tests.append(self._skipped(test, "run stopped early"))
+                        self.events.publish(TestSkipped(result=run_result.tests[-1]))
+                        continue
 
-                for platform in self._platforms_for(test, options.filters, session):
-                    result = self._run_test_with_retries(
-                        session, artifacts, test, platform
-                    )
-                    run_result.tests.append(result)
-                    if result.status in (TestStatus.FAILED, TestStatus.ERROR):
-                        failures += 1
-                        stop, reason = options.failure_policy.should_stop(failures)
-                        if stop:
-                            run_result.stopped_early = True
-                            run_result.stop_reason = reason
-                            stopped = True
-                            break
+                    for platform in self._platforms_for(test, options.filters, session):
+                        setup_error = lifecycle.before(test, platform)
+                        if setup_error is None:
+                            result = self._run_test_with_retries(
+                                session, artifacts, test, platform
+                            )
+                        else:
+                            result = self._feature_setup_failed(test, platform, setup_error)
+                        run_result.tests.append(result)
+                        lifecycle.after(test, platform)
+                        if result.status in (TestStatus.FAILED, TestStatus.ERROR):
+                            failures += 1
+                            stop, reason = options.failure_policy.should_stop(failures)
+                            if stop:
+                                run_result.stopped_early = True
+                                run_result.stop_reason = reason
+                                stopped = True
+                                break
+            finally:
+                lifecycle.close()
 
             if run_result.tests and artifacts.has_run_dir:
                 run_result.results_dir = str(artifacts.run_dir)
@@ -347,6 +369,25 @@ class TestRunner:
             return [None]
         return runnable
 
+    def _feature_setup_failed(
+        self, test: TestDefinition, platform: str | None, error: str
+    ) -> TestResult:
+        """Record a test as failed because its feature's setup failed (not executed)."""
+        self.events.publish(
+            TestStarted(test_id=test.id, name=test.name, feature=test.feature, platform=platform)
+        )
+        result = TestResult(
+            test_id=test.id,
+            name=test.name,
+            feature=test.feature,
+            platform=platform,
+            status=TestStatus.FAILED,
+            error=f"Feature setup failed: {error}",
+            failure_category="feature_setup",
+        )
+        self.events.publish(TestFailed(result=result))
+        return result
+
     def _skipped(self, test: TestDefinition, reason: str) -> TestResult:
         return TestResult(
             test_id=test.id,
@@ -401,32 +442,27 @@ class TestRunner:
         )
 
         device = None
-        device_name = None
-        if platform is not None:
-            names = [
-                n for n in test.required_devices if n in session.config.devices
-            ] or session.devices_for_platform(platform)
-            device_name = names[0] if names else None
-            if device_name is not None:
-                try:
-                    device = session.device(device_name)
-                except UTFError as exc:
-                    return self._finish(
-                        test,
-                        platform,
-                        TestResult(
-                            test_id=test.id,
-                            name=test.name,
-                            feature=test.feature,
-                            platform=platform,
-                            status=TestStatus.ERROR,
-                            error=str(exc),
-                            failure_category="device_connection",
-                            duration=time.monotonic() - started,
-                        ),
-                        artifacts,
-                        test_artifacts,
-                    )
+        device_name = self._device_name_for(session, test, platform)
+        if device_name is not None:
+            try:
+                device = session.device(device_name)
+            except UTFError as exc:
+                return self._finish(
+                    test,
+                    platform,
+                    TestResult(
+                        test_id=test.id,
+                        name=test.name,
+                        feature=test.feature,
+                        platform=platform,
+                        status=TestStatus.ERROR,
+                        error=str(exc),
+                        failure_category="device_connection",
+                        duration=time.monotonic() - started,
+                    ),
+                    artifacts,
+                    test_artifacts,
+                )
 
         context = TestContext(
             config=self.config,
@@ -473,6 +509,17 @@ class TestRunner:
 
         result.duration = time.monotonic() - started
         return self._finish(test, platform, result, artifacts, test_artifacts, context)
+
+    @staticmethod
+    def _device_name_for(
+        session: RunSession, test: TestDefinition, platform: str | None
+    ) -> str | None:
+        if platform is None:
+            return None
+        names = [
+            n for n in test.required_devices if n in session.config.devices
+        ] or session.devices_for_platform(platform)
+        return names[0] if names else None
 
     def _run_steps(
         self,
@@ -702,3 +749,164 @@ def _categorize(exc: UTFError) -> str:
         if name == exc_name:
             return category
     return "error"
+
+
+class _FeatureLifecycle:
+    """Runs feature ``setup`` before the first selected test of a feature on a
+    platform and ``teardown`` after its last one (or when the run ends early)."""
+
+    def __init__(
+        self,
+        runner: TestRunner,
+        session: RunSession,
+        artifacts: ArtifactManager,
+        suite: TestSuite,
+        plan: list[tuple[TestDefinition, str | None]],
+    ) -> None:
+        self._runner = runner
+        self._session = session
+        self._artifacts = artifacts
+        self._suite = suite
+        self._remaining: dict[tuple[str, str | None], int] = {}
+        for test, platform in plan:
+            key = self._key(test, platform)
+            self._remaining[key] = self._remaining.get(key, 0) + 1
+        # key -> setup error (None = setup passed); only for features that started
+        self._open: dict[tuple[str, str | None], str | None] = {}
+        self._first_test: dict[tuple[str, str | None], TestDefinition] = {}
+        self._contexts: dict[tuple[str, str | None], TestContext] = {}
+
+    @staticmethod
+    def _key(test: TestDefinition, platform: str | None) -> tuple[str, str | None]:
+        return (test.feature.strip().lower(), platform)
+
+    def before(self, test: TestDefinition, platform: str | None) -> str | None:
+        """Ensure feature setup has run; returns its error message if it failed."""
+        feature = self._suite.feature_for(test.feature)
+        if feature is None:
+            return None
+        key = self._key(test, platform)
+        if key not in self._open:
+            self._first_test[key] = test
+            self._open[key] = self._run_phase(feature, test, platform, "setup")
+        return self._open[key]
+
+    def after(self, test: TestDefinition, platform: str | None) -> None:
+        key = self._key(test, platform)
+        self._remaining[key] = self._remaining.get(key, 1) - 1
+        if self._remaining[key] <= 0 and key in self._open:
+            self._teardown(key, test, platform)
+
+    def close(self) -> None:
+        """Tear down every feature still open (run stopped early or crashed)."""
+        for key in list(self._open):
+            self._teardown(key, self._first_test[key], key[1])
+
+    def _teardown(
+        self, key: tuple[str, str | None], test: TestDefinition, platform: str | None
+    ) -> None:
+        feature = self._suite.feature_for(test.feature)
+        self._open.pop(key, None)
+        if feature is not None:
+            self._run_phase(feature, test, platform, "teardown")
+        self._contexts.pop(key, None)
+        self._first_test.pop(key, None)
+
+    def _run_phase(
+        self,
+        feature: FeatureDefinition,
+        test: TestDefinition,
+        platform: str | None,
+        phase: str,
+    ) -> str | None:
+        """Run the feature's ``phase`` steps; returns an error message on failure."""
+        runner = self._runner
+        steps = feature.setup if phase == "setup" else feature.teardown
+        if not steps:
+            return None
+        started_event = FeatureSetupStarted if phase == "setup" else FeatureTeardownStarted
+        completed_event = (
+            FeatureSetupCompleted if phase == "setup" else FeatureTeardownCompleted
+        )
+        runner.events.publish(started_event(feature=feature.name, platform=platform))
+        result = TestResult(
+            test_id=_feature_test_id(feature.name),
+            name=f"{feature.name} {phase}",
+            feature=feature.name,
+            platform=platform,
+            status=TestStatus.PASSED,
+        )
+        error: str | None = None
+        try:
+            key = self._key(test, platform)
+            context = self._contexts.get(key)
+            if context is None:
+                context = self._context(feature, test, platform)
+                self._contexts[key] = context
+            failed = runner._run_steps(
+                self._session, context, steps, result, phase, record_failure=(phase == "setup")
+            )
+            if failed is not None:
+                error = f"{failed.action} — {failed.message or 'step failed'}"
+            elif any(not s.passed for s in result.steps):
+                error = next(
+                    f"{s.action} — {s.message or 'step failed'}"
+                    for s in result.steps
+                    if not s.passed
+                )
+        except UTFError as exc:
+            error = str(exc)
+        if error is not None:
+            runner.log.warning("Feature %s %s failed: %s", feature.name, phase, error)
+        runner.events.publish(
+            completed_event(
+                feature=feature.name,
+                platform=platform,
+                passed=error is None,
+                error=error,
+                steps=list(result.steps),
+            )
+        )
+        return error
+
+    def _context(
+        self, feature: FeatureDefinition, test: TestDefinition, platform: str | None
+    ) -> TestContext:
+        runner = self._runner
+        session = self._session
+        device = None
+        device_name = runner._device_name_for(session, test, platform)
+        if device_name is not None:
+            device = session.device(device_name)
+        pseudo_test = test.model_copy(
+            update={
+                "id": _feature_test_id(feature.name),
+                "name": f"{feature.name} feature",
+                "parameters": {},
+            }
+        )
+        return TestContext(
+            config=runner.config,
+            test=pseudo_test,
+            conditions=session.conditions,
+            verifiers=session.verifiers,
+            events=runner.events,
+            artifacts=self._artifacts.for_test(pseudo_test.id),
+            logger=get_logger(
+                "argus.feature",
+                test_id=pseudo_test.id,
+                feature=feature.name,
+                platform=platform,
+                device=device_name,
+            ),
+            platform=platform,
+            device=device,
+            backend=session.backend if session.backend_available else None,
+            instrumentation=session.instrumentation(device_name) if device_name else None,
+            variables=dict(runner.config.variables),
+        )
+
+
+def _feature_test_id(feature_name: str) -> str:
+    slug = "".join(c if c.isalnum() or c in "_-" else "_" for c in feature_name.strip())
+    return f"feature_{slug or 'unnamed'}"

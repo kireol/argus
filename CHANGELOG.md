@@ -6,6 +6,13 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Feature-level `setup`/`teardown`: a top-level `features:` block in test
+  files runs steps once per feature (per platform) before its first selected
+  test and after its last, with `FeatureSetup*`/`FeatureTeardown*` events and
+  console lines. A failed feature setup fails that feature's tests without
+  running them; teardown always runs. See `docs/test-authoring.md`.
+
 ### Fixed
 - Android: every adb command now targets the resolved serial (`adb -s`), so
   commands issued before `connect()` can no longer hit "more than one

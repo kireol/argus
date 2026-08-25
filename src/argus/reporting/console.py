@@ -9,6 +9,10 @@ from rich.console import Console
 from argus.events.bus import EventBus
 from argus.events.events import (
     Event,
+    FeatureSetupCompleted,
+    FeatureSetupStarted,
+    FeatureTeardownCompleted,
+    FeatureTeardownStarted,
     PreflightCheckCompleted,
     PreflightCompleted,
     PreflightStarted,
@@ -123,12 +127,39 @@ class ConsoleReporter:
             self.console.file.flush()
         self.console.print(markup)
 
-    def _on_TestStarted(self, event: TestStarted) -> None:  # noqa: N802
-        if event.feature != self._current_feature:
-            self._current_feature = event.feature
+    def _feature_header(self, feature: str) -> None:
+        if feature != self._current_feature:
+            self._current_feature = feature
             self._replaceable = False
             if not self.quiet:
-                self.console.print(f"\n[bold]{event.feature}[/bold]\n")
+                self.console.print(f"\n[bold]{feature}[/bold]\n")
+
+    def _feature_phase_line(
+        self, phase: str, platform: str | None, passed: bool, error: str | None
+    ) -> None:
+        self._replaceable = False
+        if self.quiet and passed:
+            return
+        target = f" ({platform})" if platform else ""
+        mark, colour = ("✓", "green") if passed else ("✗", "red")
+        self.console.print(f"  [{colour}]{mark}[/{colour}] {phase}{target}")
+        if error:
+            self.console.print(f"    {error}")
+
+    def _on_FeatureSetupStarted(self, event: FeatureSetupStarted) -> None:  # noqa: N802
+        self._feature_header(event.feature)
+
+    def _on_FeatureSetupCompleted(self, event: FeatureSetupCompleted) -> None:  # noqa: N802
+        self._feature_phase_line("setup", event.platform, event.passed, event.error)
+
+    def _on_FeatureTeardownStarted(self, event: FeatureTeardownStarted) -> None:  # noqa: N802
+        self._feature_header(event.feature)
+
+    def _on_FeatureTeardownCompleted(self, event: FeatureTeardownCompleted) -> None:  # noqa: N802
+        self._feature_phase_line("teardown", event.platform, event.passed, event.error)
+
+    def _on_TestStarted(self, event: TestStarted) -> None:  # noqa: N802
+        self._feature_header(event.feature)
         progress = self._assign_progress()
         if self.quiet:
             return

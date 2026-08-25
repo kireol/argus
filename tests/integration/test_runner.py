@@ -325,3 +325,127 @@ def test_skip_to_runs_from_ordinal(tmp_path):
 
     with pytest.raises(TestDefinitionError, match="past the end"):
         TestRunner(config).run(RunOptions(skip_to=4))
+
+
+# -- feature-level setup / teardown ------------------------------------------------------
+
+
+def write_suite_with_features(tmp_path: Path, tests: list[dict], features: dict) -> None:
+    suites = tmp_path / "suites"
+    suites.mkdir(exist_ok=True)
+    (suites / "suite.yaml").write_text(yaml.safe_dump({"features": features, "tests": tests}))
+
+
+def _feature_events(events: list) -> list[str]:
+    return [
+        f"{type(e).__name__}:{e.feature}"
+        for e in events
+        if type(e).__name__.startswith("Feature")
+    ]
+
+
+def test_feature_setup_runs_once_before_first_test_and_teardown_after_last(tmp_path):
+    config = build_config(tmp_path)
+    features = {
+        "Feature": {
+            "setup": [{"action": "backend.set", "data": {"movieId": 123}}],
+            "teardown": [{"action": "backend.set", "data": {"movieId": None}}],
+        }
+    }
+    write_suite_with_features(tmp_path, [passing_test("P-001"), passing_test("P-002")], features)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run()
+    assert result.status == RunStatus.PASSED
+    names = [type(e).__name__ for e in seen]
+    assert names.index("FeatureSetupCompleted") < names.index("TestStarted")
+    assert names.count("FeatureSetupStarted") == 1
+    assert names.count("FeatureTeardownCompleted") == 1
+    last_pass = len(names) - 1 - names[::-1].index("TestPassed")
+    assert names.index("FeatureTeardownCompleted") > last_pass
+    assert _feature_events(seen)[0] == "FeatureSetupStarted:Feature"
+
+
+def test_feature_setup_is_case_insensitive(tmp_path):
+    config = build_config(tmp_path)
+    features = {"FEATURE": {"setup": [{"action": "backend.set", "data": {"movieId": 123}}]}}
+    write_suite_with_features(tmp_path, [passing_test("P-001", feature="feature")], features)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    TestRunner(config, events).run()
+    assert "FeatureSetupCompleted" in [type(e).__name__ for e in seen]
+
+
+def test_feature_setup_failure_fails_remaining_tests_without_running_them(tmp_path):
+    config = build_config(tmp_path)
+    features = {
+        "Feature": {
+            "setup": [
+                {
+                    "action": "verify",
+                    "condition": {"type": "image_present", "image": "movie_456.png"},
+                }
+            ],
+            "teardown": [{"action": "backend.set", "data": {"movieId": None}}],
+        }
+    }
+    write_suite_with_features(tmp_path, [passing_test("P-001"), passing_test("P-002")], features)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run(
+        RunOptions(failure_policy=FailurePolicy(stop_on_failure=False))
+    )
+    assert result.status == RunStatus.FAILED
+    assert [t.status for t in result.tests] == [TestStatus.FAILED, TestStatus.FAILED]
+    assert all("Feature setup failed" in (t.error or "") for t in result.tests)
+    assert all(t.steps == [] for t in result.tests)  # never executed
+    names = [type(e).__name__ for e in seen]
+    assert "ActionStarted" in names  # the setup step itself ran
+    assert "FeatureTeardownCompleted" in names  # teardown still runs after a failed setup
+
+
+def test_feature_teardown_runs_when_run_stops_early(tmp_path):
+    config = build_config(tmp_path)
+    features = {"Feature": {"teardown": [{"action": "backend.set", "data": {"movieId": None}}]}}
+    write_suite_with_features(
+        tmp_path, [failing_test("F-001"), passing_test("P-002")], features
+    )
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run(
+        RunOptions(failure_policy=FailurePolicy(stop_on_failure=True))
+    )
+    assert result.stopped_early
+    assert "FeatureTeardownCompleted" in [type(e).__name__ for e in seen]
+
+
+def test_feature_without_selected_tests_never_runs_setup(tmp_path):
+    config = build_config(tmp_path)
+    features = {"Other": {"setup": [{"action": "backend.set", "data": {"movieId": 123}}]}}
+    write_suite_with_features(tmp_path, [passing_test("P-001")], features)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    TestRunner(config, events).run()
+    assert not _feature_events(seen)
+
+
+def test_feature_teardown_failure_does_not_fail_tests(tmp_path):
+    config = build_config(tmp_path)
+    features = {
+        "Feature": {
+            "teardown": [
+                {
+                    "action": "verify",
+                    "condition": {"type": "image_present", "image": "movie_456.png"},
+                }
+            ]
+        }
+    }
+    write_suite_with_features(tmp_path, [passing_test("P-001")], features)
+    result = TestRunner(config).run()
+    assert result.status == RunStatus.PASSED
