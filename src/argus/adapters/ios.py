@@ -182,7 +182,7 @@ class IosAdapter(Device):
         self._bundle_id = bundle_id
         self._url = url
         self._timeout = float(timeout)
-        self._log_command = log_command
+        self._log_command = log_command or None
         self._client: WdaClient = (
             client_factory() if client_factory else _HttpWdaClient(url, self._timeout)
         )
@@ -270,6 +270,12 @@ class IosAdapter(Device):
             except DeviceConnectionError:
                 self.disconnect()
                 raise
+            except Exception as exc:
+                self.disconnect()
+                raise DeviceConnectionError(
+                    f"log_command failed to start: {exc}",
+                    remediation="Check devices.<name>.log_command.",
+                ) from exc
 
     def disconnect(self) -> None:
         self._stop_log_stream()
