@@ -9,6 +9,7 @@ capabilities are discoverable, and unsupported operations raise
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
     from argus.instrumentation.client import InstrumentationClient
 
 
+Point = tuple[int, int]
+
+
 @dataclass(frozen=True)
 class DeviceCapabilities:
     """Discoverable capabilities of a device adapter."""
@@ -28,6 +32,9 @@ class DeviceCapabilities:
     supports_screenshot: bool = False
     supports_tap: bool = False
     supports_swipe: bool = False
+    supports_long_press: bool = False
+    supports_drag: bool = False
+    supports_multi_touch: bool = False
     supports_keyboard: bool = False
     supports_app_lifecycle: bool = False
     supports_logs: bool = False
@@ -135,6 +142,59 @@ class Device(ABC):
     def press_key(self, key: str) -> None:
         raise self._unsupported("press_key")
 
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        """Press and hold at a point for ``duration_ms`` before releasing."""
+        raise self._unsupported("long_press")
+
+    def drag(
+        self,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        hold_ms: int = 500,
+        duration_ms: int = 500,
+    ) -> None:
+        """Press, hold in place for ``hold_ms``, then move to the target and release.
+
+        This is drag-and-drop / reorder, as opposed to ``swipe`` which moves
+        immediately (a fling/scroll).
+        """
+        raise self._unsupported("drag")
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        """Move several fingers simultaneously along their paths.
+
+        ``fingers[i]`` is the ordered list of points finger ``i`` visits; every
+        finger touches down at its first point and lifts at its last. All fingers
+        share the same timeline of ``duration_ms``.
+        """
+        raise self._unsupported("multi_touch")
+
+    def pinch(
+        self,
+        cx: int,
+        cy: int,
+        start_distance: int,
+        end_distance: int,
+        duration_ms: int = 500,
+    ) -> None:
+        """Two-finger pinch centred on ``(cx, cy)``.
+
+        Fingers start ``start_distance`` apart on the horizontal axis and end
+        ``end_distance`` apart: a growing distance zooms in, a shrinking one
+        zooms out. Implemented on top of ``multi_touch`` so any adapter that
+        supports multi-touch gets pinch for free.
+        """
+        half_start, half_end = start_distance // 2, end_distance // 2
+        self.multi_touch(
+            [
+                [(cx - half_start, cy), (cx - half_end, cy)],
+                [(cx + half_start, cy), (cx + half_end, cy)],
+            ],
+            duration_ms,
+        )
+
     # -- helpers ----------------------------------------------------------------------
 
     def _unsupported(self, operation: str) -> DeviceCapabilityError:
@@ -151,3 +211,17 @@ class Device(ABC):
 
     def __exit__(self, *exc_info: object) -> None:
         self.disconnect()
+
+
+def interpolate_path(path: Sequence[Point], step: int, steps: int) -> Point:
+    """Position along a polyline ``path`` at fraction ``step / steps``."""
+    if len(path) == 1 or step <= 0:
+        return path[0]
+    if step >= steps:
+        return path[-1]
+    segments = len(path) - 1
+    position = step / steps * segments
+    index = min(int(position), segments - 1)
+    fraction = position - index
+    (x1, y1), (x2, y2) = path[index], path[index + 1]
+    return (round(x1 + (x2 - x1) * fraction), round(y1 + (y2 - y1) * fraction))

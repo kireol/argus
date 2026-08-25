@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Touch gestures: `device.long_press`, `device.drag` (press, hold, then
+  move), `device.pinch` and `device.multi_touch` actions, with matching
+  `Device` methods and `supports_long_press` / `supports_drag` /
+  `supports_multi_touch` capability flags. Android implements pinch and
+  multi-touch with evdev `sendevent` streams (touchscreen auto-detected via
+  `getevent -p`, overridable with `input_device`), drag with
+  `input draganddrop` on API 30+; the browser adapter maps long press and
+  drag to the mouse and multi-touch/pinch to CDP touch events (chromium).
 - `results.save_comparison_images` and CLI `--save-comparisons`: save
   actual/expected/diff for image verifies (pass or fail) and retain them for
   the HTML report.

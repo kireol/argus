@@ -36,6 +36,10 @@ class Device(ABC):
     # input (optional)
     def tap(self, x: int, y: int) -> None: ...
     def swipe(self, x1, y1, x2, y2, duration_ms=300) -> None: ...
+    def long_press(self, x, y, duration_ms=1000) -> None: ...
+    def drag(self, x1, y1, x2, y2, hold_ms=500, duration_ms=500) -> None: ...
+    def multi_touch(self, fingers, duration_ms=500) -> None: ...  # [[(x, y), ...], ...]
+    def pinch(self, cx, cy, start_distance, end_distance, duration_ms=500) -> None: ...
     def press_key(self, key: str) -> None: ...
 ```
 
@@ -47,7 +51,14 @@ if device.capabilities.supports_tap:
 ```
 
 Unsupported operations raise `DeviceCapabilityError` with a clear message —
-never a silent no-op.
+never a silent no-op. Capability flags: `supports_tap`, `supports_swipe`,
+`supports_long_press`, `supports_drag`, `supports_multi_touch`, and so on.
+
+`pinch` has a default implementation in the base class built on
+`multi_touch` (two fingers moving along the horizontal axis through the
+centre), so an adapter only needs to implement `multi_touch` to get pinch
+and zoom. `argus.adapters.base.interpolate_path` helps adapters step a
+finger along a polyline.
 
 ## Built-in adapters
 
@@ -68,7 +79,8 @@ never a silent no-op.
 most usefully — **render the fake backend's state** so the full loop
 (backend.set → screen change → OpenCV verification) runs with zero
 hardware. `config/fake.yaml` is a complete working example. Fakes record
-inputs (`taps`, `swipes`, `keys`) for assertions in framework tests.
+inputs (`taps`, `swipes`, `long_presses`, `drags`, `multi_touches`, `keys`)
+for assertions in framework tests.
 
 ## Screenshot providers
 
