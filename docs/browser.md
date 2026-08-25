@@ -44,6 +44,9 @@ web` line above, this device's filter label defaults to `browser` (its
 | Reset app | stop + start (fresh navigation) |
 | Tap | `mouse.click(x, y)` |
 | Swipe | mouse down → move (stepped over `duration_ms`) → up |
+| Long press | mouse move → down → sleep `duration` → up |
+| Drag | mouse move → down → sleep `hold` → move (stepped) → up |
+| Pinch / multi-touch | Chrome DevTools `Input.dispatchTouchEvent` (`touchStart` / stepped `touchMove` / `touchEnd`) — **chromium only**; firefox/webkit raise `DeviceCapabilityError` |
 | Key | `keyboard.press`; Android names map (`DPAD_LEFT` → `ArrowLeft`, `BACK` → `Escape`, `ENTER` → `Enter`) |
 | Logs | last N `console` events as `"<type>: <text>"` lines |
 | Screen size | viewport size |

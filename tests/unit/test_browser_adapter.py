@@ -329,3 +329,96 @@ class TestConfig:
         assert fake_driver.stopped is True
         assert adapter._browser is None
         assert adapter._playwright is None
+
+
+class _FakeCDPSession:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, dict[str, Any]]] = []
+
+    def send(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.sent.append((method, params or {}))
+        return {}
+
+
+class _FakeContext:
+    def __init__(self) -> None:
+        self.cdp = _FakeCDPSession()
+
+    def new_cdp_session(self, page: Any) -> _FakeCDPSession:
+        return self.cdp
+
+
+class TestGestures:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch):
+        self.sleeps: list[float] = []
+        monkeypatch.setattr("argus.adapters.browser.time.sleep", self.sleeps.append)
+
+    def test_capabilities(self, adapter):
+        caps = adapter.capabilities
+        assert caps.supports_long_press and caps.supports_drag and caps.supports_multi_touch
+
+    def test_long_press_holds_mouse_down(self, adapter, page):
+        adapter.connect()
+        adapter.long_press(10, 20, duration_ms=1500)
+        assert page.mouse.calls == [("move", (10, 20, 1)), ("down", ()), ("up", ())]
+        assert self.sleeps == [1.5]
+
+    def test_drag_holds_before_moving(self, adapter, page):
+        adapter.connect()
+        adapter.drag(0, 0, 100, 50, hold_ms=250, duration_ms=320)
+        names = [c[0] for c in page.mouse.calls]
+        assert names == ["move", "down", "move", "up"]
+        assert page.mouse.calls[2][1] == (100, 50, 20)
+        assert self.sleeps == [0.25]
+
+    def test_multi_touch_dispatches_cdp_touch_events(self, adapter, page):
+        page.context = _FakeContext()
+        adapter.connect()
+        adapter.multi_touch([[(0, 0), (10, 10)], [(100, 100), (80, 80)]], duration_ms=32)
+        sent = page.context.cdp.sent
+        assert [m for m, _ in sent] == [
+            "Input.dispatchTouchEvent",
+            "Input.dispatchTouchEvent",
+            "Input.dispatchTouchEvent",
+            "Input.dispatchTouchEvent",
+        ]
+        assert sent[0][1] == {
+            "type": "touchStart",
+            "touchPoints": [{"x": 0, "y": 0, "id": 0}, {"x": 100, "y": 100, "id": 1}],
+        }
+        assert sent[1][1] == {
+            "type": "touchMove",
+            "touchPoints": [{"x": 5, "y": 5, "id": 0}, {"x": 90, "y": 90, "id": 1}],
+        }
+        assert sent[2][1] == {
+            "type": "touchMove",
+            "touchPoints": [{"x": 10, "y": 10, "id": 0}, {"x": 80, "y": 80, "id": 1}],
+        }
+        assert sent[3][1] == {"type": "touchEnd", "touchPoints": []}
+
+    def test_pinch_uses_multi_touch(self, adapter, page):
+        page.context = _FakeContext()
+        adapter.connect()
+        adapter.pinch(200, 200, start_distance=100, end_distance=50, duration_ms=16)
+        sent = page.context.cdp.sent
+        assert sent[0][1]["touchPoints"] == [
+            {"x": 150, "y": 200, "id": 0},
+            {"x": 250, "y": 200, "id": 1},
+        ]
+        assert sent[-2][1]["touchPoints"] == [
+            {"x": 175, "y": 200, "id": 0},
+            {"x": 225, "y": 200, "id": 1},
+        ]
+
+    def test_multi_touch_requires_chromium(self, page):
+        from argus.exceptions import DeviceCapabilityError
+
+        page.context = _FakeContext()
+        adapter = BrowserAdapter(
+            "web", url="http://app.local/", browser="firefox", page_factory=lambda: page
+        )
+        adapter.connect()
+        with pytest.raises(DeviceCapabilityError, match="chromium"):
+            adapter.multi_touch([[(0, 0), (1, 1)]])
+        assert page.context.cdp.sent == []

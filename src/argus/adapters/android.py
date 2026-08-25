@@ -7,17 +7,21 @@ Talks to emulators or physical devices through the ``adb`` binary using
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import subprocess
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image as PILImage
 from PIL.Image import Image
 
-from argus.adapters.base import Device, DeviceCapabilities
+from argus.adapters.base import Device, DeviceCapabilities, Point, interpolate_path
 from argus.config.models import DeviceConfig
 from argus.exceptions import (
     ConfigurationError,
+    DeviceCapabilityError,
     DeviceConnectionError,
     ScreenshotError,
 )
@@ -25,6 +29,51 @@ from argus.logging import get_logger
 from argus.models.common import HealthCheckResult, ScreenInfo
 
 _DEFAULT_TIMEOUT = 30.0
+_DRAGANDDROP_MIN_SDK = 30  # `input draganddrop` arrived in Android 11
+_TOUCH_FRAME_MS = 20  # sendevent frames are shell round-trips; 50 Hz is plenty
+
+# Linux input event codes used by the multi-touch (protocol B) stream.
+_EV_SYN, _EV_KEY, _EV_ABS = 0, 1, 3
+_SYN_REPORT = 0
+_BTN_TOUCH = 330
+_ABS_MT_SLOT, _ABS_MT_POSITION_X, _ABS_MT_POSITION_Y, _ABS_MT_TRACKING_ID = 47, 53, 54, 57
+
+_GETEVENT_DEVICE = re.compile(r"^add device \d+: (?P<path>/dev/input/\S+)")
+_GETEVENT_AXIS = re.compile(
+    r"^\s*(?:ABS \(0003\):)?\s*(?P<code>003[56])\s*:.*?min (?P<min>-?\d+), max (?P<max>-?\d+)"
+)
+
+
+@dataclass(frozen=True)
+class _Touchscreen:
+    """An evdev touchscreen and its ABS_MT_POSITION_{X,Y} ranges (None = unknown)."""
+
+    path: str
+    x_range: tuple[int, int] | None = None
+    y_range: tuple[int, int] | None = None
+
+
+def _parse_touchscreens(getevent_output: str) -> list[_Touchscreen]:
+    """Devices from ``getevent -p`` that expose multi-touch position axes."""
+    found: list[_Touchscreen] = []
+    path: str | None = None
+    axes: dict[str, tuple[int, int]] = {}
+
+    def flush() -> None:
+        if path and "0035" in axes and "0036" in axes:
+            found.append(_Touchscreen(path, axes["0035"], axes["0036"]))
+
+    for line in getevent_output.splitlines():
+        device = _GETEVENT_DEVICE.match(line)
+        if device:
+            flush()
+            path, axes = device.group("path"), {}
+            continue
+        axis = _GETEVENT_AXIS.match(line)
+        if axis:
+            axes[axis.group("code")] = (int(axis.group("min")), int(axis.group("max")))
+    flush()
+    return found
 
 
 class AndroidAdapter(Device):
@@ -39,6 +88,7 @@ class AndroidAdapter(Device):
         app_activity: str | None = None,
         adb_path: str = "adb",
         command_timeout: float = _DEFAULT_TIMEOUT,
+        input_device: str | None = None,
     ) -> None:
         super().__init__(name)
         self._serial = serial
@@ -46,8 +96,11 @@ class AndroidAdapter(Device):
         self._app_activity = app_activity
         self._adb_path = adb_path
         self._timeout = command_timeout
+        self._input_device = input_device
         self._connected = False
         self._screen_info: ScreenInfo | None = None
+        self._sdk: int | None = None
+        self._touchscreen: _Touchscreen | None = None
         self._log = get_logger("argus.android", device=name)
 
     @classmethod
@@ -60,6 +113,7 @@ class AndroidAdapter(Device):
             app_activity=options.get("app_activity"),
             adb_path=options.get("adb_path", "adb"),
             command_timeout=float(options.get("command_timeout", _DEFAULT_TIMEOUT)),
+            input_device=options.get("input_device"),
         )
 
     @property
@@ -68,6 +122,9 @@ class AndroidAdapter(Device):
             supports_screenshot=True,
             supports_tap=True,
             supports_swipe=True,
+            supports_long_press=True,
+            supports_drag=True,
+            supports_multi_touch=True,
             supports_keyboard=True,
             supports_app_lifecycle=self._app_package is not None,
             supports_logs=True,
@@ -270,3 +327,137 @@ class AndroidAdapter(Device):
     def press_key(self, key: str) -> None:
         keycode = key if key.startswith("KEYCODE_") else f"KEYCODE_{key.upper()}"
         self._shell("input", "keyevent", keycode)
+
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        # The standard ADB idiom: a swipe that goes nowhere is a press-and-hold.
+        self._shell("input", "swipe", str(x), str(y), str(x), str(y), str(duration_ms))
+
+    def drag(
+        self, x1: int, y1: int, x2: int, y2: int, hold_ms: int = 500, duration_ms: int = 500
+    ) -> None:
+        if self._sdk_version() >= _DRAGANDDROP_MIN_SDK:
+            # `input draganddrop` performs its own long-press before moving.
+            self._shell(
+                "input", "draganddrop", str(x1), str(y1), str(x2), str(y2), str(duration_ms)
+            )
+            return
+        frames = _hold_then_move((x1, y1), (x2, y2), hold_ms, duration_ms)
+        self._send_touch_frames(frames)
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        steps = max(1, duration_ms // _TOUCH_FRAME_MS)
+        frames = [
+            [interpolate_path(path, step, steps) for path in fingers] for step in range(steps + 1)
+        ]
+        # Each frame is followed by one frame interval, except the last (then we lift).
+        self._send_touch_frames(
+            [(frame, 0 if i == steps else _TOUCH_FRAME_MS) for i, frame in enumerate(frames)]
+        )
+
+    # -- multi-touch via evdev ------------------------------------------------------------------
+
+    def _sdk_version(self) -> int:
+        if self._sdk is None:
+            self._sdk = int(self._shell("getprop", "ro.build.version.sdk").strip() or 0)
+        return self._sdk
+
+    def _find_touchscreen(self) -> _Touchscreen:
+        if self._touchscreen is not None:
+            return self._touchscreen
+        if self._input_device:
+            # Explicit override: trust it and send screen pixels verbatim.
+            self._touchscreen = _Touchscreen(self._input_device)
+            return self._touchscreen
+        screens = _parse_touchscreens(self._shell("getevent", "-p"))
+        if not screens:
+            raise DeviceCapabilityError(
+                f"Device {self.name!r}: no multi-touch touchscreen found in 'getevent -p'.",
+                remediation="Set devices.<name>.input_device to the /dev/input/eventN "
+                "path of the touchscreen.",
+            )
+        self._touchscreen = screens[0]
+        return self._touchscreen
+
+    def _to_touch_units(self, point: Point, screen: _Touchscreen) -> Point:
+        if screen.x_range is None or screen.y_range is None:
+            return point
+        width, height = self.get_screen_size()
+        return (
+            _scale(point[0], width, screen.x_range),
+            _scale(point[1], height, screen.y_range),
+        )
+
+    def _send_touch_frames(self, frames: Sequence[tuple[Sequence[Point], int]]) -> None:
+        """Replay ``frames`` — (finger positions, delay-after-ms) — as protocol-B events.
+
+        Every finger in a frame is a slot; a finger touches down in the first
+        frame and lifts after the last. Emitted as one ``sh -c`` script so the
+        gesture is not paced by adb round-trips.
+        """
+        screen = self._find_touchscreen()
+        dev = screen.path
+        lines = ["set -e"]
+
+        def ev(type_: int, code: int, value: int) -> None:
+            lines.append(f"sendevent {dev} {type_} {code} {value}")
+
+        first, *rest = frames
+        for slot, point in enumerate(first[0]):
+            x, y = self._to_touch_units(point, screen)
+            ev(_EV_ABS, _ABS_MT_SLOT, slot)
+            ev(_EV_ABS, _ABS_MT_TRACKING_ID, slot)
+            if slot == 0:
+                ev(_EV_KEY, _BTN_TOUCH, 1)
+            ev(_EV_ABS, _ABS_MT_POSITION_X, x)
+            ev(_EV_ABS, _ABS_MT_POSITION_Y, y)
+        ev(_EV_SYN, _SYN_REPORT, 0)
+        previous = list(first[0])
+        lines.append(f"sleep {first[1] / 1000:g}")
+        for points, delay_ms in rest:
+            for slot, point in enumerate(points):
+                if point == previous[slot]:
+                    continue
+                x, y = self._to_touch_units(point, screen)
+                ev(_EV_ABS, _ABS_MT_SLOT, slot)
+                ev(_EV_ABS, _ABS_MT_POSITION_X, x)
+                ev(_EV_ABS, _ABS_MT_POSITION_Y, y)
+            ev(_EV_SYN, _SYN_REPORT, 0)
+            previous = list(points)
+            if delay_ms:
+                lines.append(f"sleep {delay_ms / 1000:g}")
+        for slot in range(len(previous)):
+            ev(_EV_ABS, _ABS_MT_SLOT, slot)
+            ev(_EV_ABS, _ABS_MT_TRACKING_ID, -1)
+        ev(_EV_KEY, _BTN_TOUCH, 0)
+        ev(_EV_SYN, _SYN_REPORT, 0)
+        try:
+            self._shell("sh", "-c", "\n".join(lines))
+        except DeviceConnectionError as exc:
+            if "Permission denied" not in exc.message:
+                raise
+            raise DeviceCapabilityError(
+                f"Device {self.name!r}: cannot write touch events to {dev} "
+                f"({exc.message}).",
+                remediation="Multi-touch needs a writable /dev/input device: use an "
+                "emulator, a rooted device ('adb root'), or a build with adb shell "
+                "in the 'input' group.",
+            ) from exc
+
+
+def _scale(value: int, screen_extent: int, axis_range: tuple[int, int]) -> int:
+    lo, hi = axis_range
+    if screen_extent <= 1 or hi == lo:
+        return value
+    return round(lo + value * (hi - lo) / (screen_extent - 1))
+
+
+def _hold_then_move(
+    start: Point, end: Point, hold_ms: int, duration_ms: int
+) -> list[tuple[list[Point], int]]:
+    """Frames for a drag: sit at ``start`` for ``hold_ms``, then glide to ``end``."""
+    steps = max(1, duration_ms // _TOUCH_FRAME_MS)
+    frames: list[tuple[list[Point], int]] = [([start], hold_ms)]
+    for step in range(1, steps + 1):
+        delay = 0 if step == steps else _TOUCH_FRAME_MS
+        frames.append(([interpolate_path([start, end], step, steps)], delay))
+    return frames
