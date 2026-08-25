@@ -124,6 +124,19 @@ def _decode(raw: bytes) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"value": payload}
 
 
+_DOWN = {"type": "pointerDown", "button": 0}
+_UP = {"type": "pointerUp", "button": 0}
+
+
+def _pause(duration_ms: int) -> dict[str, Any]:
+    return {"type": "pause", "duration": duration_ms}
+
+
+def _num(value: float) -> float | int:
+    """Render whole numbers as ints so request bodies read like the docs."""
+    return int(value) if float(value).is_integer() else value
+
+
 Spawner = Callable[[list[str]], Any]
 
 
@@ -308,3 +321,70 @@ class IosAdapter(Device):
     def _to_points(self, point: Point) -> tuple[float, float]:
         scale = self._pixel_scale()
         return (point[0] / scale, point[1] / scale)
+
+    # -- input (W3C Actions) --------------------------------------------------------------
+
+    def _move(self, point: Point, duration_ms: int) -> dict[str, Any]:
+        x, y = self._to_points(point)
+        return {"type": "pointerMove", "duration": duration_ms, "x": _num(x), "y": _num(y)}
+
+    @staticmethod
+    def _finger(index: int, actions: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "type": "pointer",
+            "id": f"finger{index}",
+            "parameters": {"pointerType": "touch"},
+            "actions": actions,
+        }
+
+    def _perform(self, sources: list[dict[str, Any]]) -> None:
+        self._post("/actions", {"actions": sources})
+        with contextlib.suppress(DeviceConnectionError):
+            self._client.request("DELETE", self._session_path("/actions"))
+
+    def tap(self, x: int, y: int) -> None:
+        self._perform([self._finger(0, [self._move((x, y), 0), _DOWN, _UP])])
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
+        self._perform(
+            [
+                self._finger(
+                    0,
+                    [self._move((x1, y1), 0), _DOWN, self._move((x2, y2), duration_ms), _UP],
+                )
+            ]
+        )
+
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        self._perform(
+            [self._finger(0, [self._move((x, y), 0), _DOWN, _pause(duration_ms), _UP])]
+        )
+
+    def drag(
+        self, x1: int, y1: int, x2: int, y2: int, hold_ms: int = 500, duration_ms: int = 500
+    ) -> None:
+        self._perform(
+            [
+                self._finger(
+                    0,
+                    [
+                        self._move((x1, y1), 0),
+                        _DOWN,
+                        _pause(hold_ms),
+                        self._move((x2, y2), duration_ms),
+                        _UP,
+                    ],
+                )
+            ]
+        )
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        sources = []
+        for index, path in enumerate(fingers):
+            segments = max(1, len(path) - 1)
+            segment_ms = round(duration_ms / segments)
+            actions = [self._move(path[0], 0), _DOWN]
+            actions += [self._move(point, segment_ms) for point in path[1:]]
+            actions.append(_UP)
+            sources.append(self._finger(index, actions))
+        self._perform(sources)
