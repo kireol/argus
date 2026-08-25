@@ -59,6 +59,36 @@ class TestStarted(Event):
 
 
 @dataclass(frozen=True)
+class FeatureSetupStarted(Event):
+    feature: str
+    platform: str | None = None
+
+
+@dataclass(frozen=True)
+class FeatureSetupCompleted(Event):
+    feature: str
+    passed: bool
+    platform: str | None = None
+    error: str | None = None
+    steps: list[StepResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FeatureTeardownStarted(Event):
+    feature: str
+    platform: str | None = None
+
+
+@dataclass(frozen=True)
+class FeatureTeardownCompleted(Event):
+    feature: str
+    passed: bool
+    platform: str | None = None
+    error: str | None = None
+    steps: list[StepResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class ActionStarted(Event):
     test_id: str
     action: str
