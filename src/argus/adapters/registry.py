@@ -56,6 +56,7 @@ def register_builtin_devices(registry: DeviceRegistry) -> None:
     from argus.adapters.android import AndroidAdapter
     from argus.adapters.appletv import AppleTvAdapter
     from argus.adapters.browser import BrowserAdapter
+    from argus.adapters.desktop import DesktopAdapter
     from argus.adapters.esp32 import Esp32Adapter
     from argus.adapters.fake import FakeDevice
     from argus.adapters.ios import IosAdapter
@@ -66,6 +67,7 @@ def register_builtin_devices(registry: DeviceRegistry) -> None:
     registry.register("appletv", AppleTvAdapter.from_config)
     registry.register("android", AndroidAdapter.from_config)
     registry.register("browser", BrowserAdapter.from_config)
+    registry.register("desktop", DesktopAdapter.from_config)
     registry.register("esp32", Esp32Adapter.from_config)
     registry.register("ios", IosAdapter.from_config)
     registry.register("roku", RokuAdapter.from_config)
