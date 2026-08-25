@@ -11,7 +11,7 @@ from PIL import Image
 
 from argus.adapters.ios import IosAdapter, _HttpWdaClient
 from argus.config.models import DeviceConfig
-from argus.exceptions import ConfigurationError, DeviceConnectionError
+from argus.exceptions import ConfigurationError, DeviceConnectionError, ScreenshotError
 
 
 def _png(size: tuple[int, int] = (4, 6)) -> bytes:
@@ -188,3 +188,34 @@ class TestLifecycle:
     def test_lifecycle_before_connect_raises(self, adapter):
         with pytest.raises(DeviceConnectionError, match="not connected"):
             adapter.start_application()
+
+
+class TestObservation:
+    def test_screenshot_decodes_base64_png(self, adapter, wda):
+        adapter.connect()
+        img = adapter.screenshot()
+        assert img.mode == "RGB" and img.size == (8, 12)
+
+    def test_screenshot_bad_data_raises(self, adapter, wda):
+        adapter.connect()
+        wda.responses[("GET", "/screenshot")] = {"value": base64.b64encode(b"nope").decode()}
+        with pytest.raises(ScreenshotError, match="PNG"):
+            adapter.screenshot()
+
+    def test_screen_info_is_points_times_scale(self, adapter, wda):
+        adapter.connect()
+        info = adapter.get_screen_info()
+        assert (info.width, info.height) == (8, 12)
+        assert adapter._pixel_scale() == 2.0
+        adapter.get_screen_info()
+        assert wda.paths("GET").count("/session/S1/wda/screen") == 1  # cached
+
+    def test_scale_defaults_to_one_when_missing(self, adapter, wda):
+        adapter.connect()
+        wda.responses[("GET", "/session/S1/wda/screen")] = {"value": {}}
+        assert adapter._pixel_scale() == 1.0
+        assert adapter._to_points((10, 20)) == (10, 20)
+
+    def test_to_points_divides_by_scale(self, adapter, wda):
+        adapter.connect()
+        assert adapter._to_points((101, 20)) == (50.5, 10)
