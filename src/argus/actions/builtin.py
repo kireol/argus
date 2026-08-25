@@ -126,6 +126,91 @@ class _DeviceSwipeAction(Action):
         return ActionResult.ok(f"swipe({x1},{y1} -> {x2},{y2}) on {device.name}")
 
 
+class _DeviceLongPressAction(Action):
+    name = "device.long_press"
+
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
+        x = int(self.require_param(params, "x"))
+        y = int(self.require_param(params, "y"))
+        duration_ms = _millis(params.get("duration", "1s"))
+        device = context.require_device()
+        try:
+            device.long_press(x, y, duration_ms)
+        except (DeviceConnectionError, DeviceCapabilityError) as exc:
+            return ActionResult.failed(str(exc), category="device_connection")
+        return ActionResult.ok(f"long_press({x}, {y}, {duration_ms}ms) on {device.name}")
+
+
+class _DeviceDragAction(Action):
+    name = "device.drag"
+
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
+        x1 = int(self.require_param(params, "from_x"))
+        y1 = int(self.require_param(params, "from_y"))
+        x2 = int(self.require_param(params, "to_x"))
+        y2 = int(self.require_param(params, "to_y"))
+        hold_ms = _millis(params.get("hold", "500ms"))
+        duration_ms = _millis(params.get("duration", "500ms"))
+        device = context.require_device()
+        try:
+            device.drag(x1, y1, x2, y2, hold_ms, duration_ms)
+        except (DeviceConnectionError, DeviceCapabilityError) as exc:
+            return ActionResult.failed(str(exc), category="device_connection")
+        return ActionResult.ok(f"drag({x1},{y1} -> {x2},{y2}) on {device.name}")
+
+
+class _DeviceMultiTouchAction(Action):
+    name = "device.multi_touch"
+
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
+        fingers = _parse_fingers(self.require_param(params, "fingers"))
+        duration_ms = _millis(params.get("duration", "500ms"))
+        device = context.require_device()
+        try:
+            device.multi_touch(fingers, duration_ms)
+        except (DeviceConnectionError, DeviceCapabilityError) as exc:
+            return ActionResult.failed(str(exc), category="device_connection")
+        return ActionResult.ok(f"multi_touch({len(fingers)} fingers) on {device.name}")
+
+
+class _DevicePinchAction(Action):
+    name = "device.pinch"
+
+    def execute(self, context: TestContext, params: dict[str, Any]) -> ActionResult:
+        x = int(self.require_param(params, "x"))
+        y = int(self.require_param(params, "y"))
+        start = int(self.require_param(params, "from_distance"))
+        end = int(self.require_param(params, "to_distance"))
+        duration_ms = _millis(params.get("duration", "500ms"))
+        device = context.require_device()
+        try:
+            device.pinch(x, y, start, end, duration_ms)
+        except (DeviceConnectionError, DeviceCapabilityError) as exc:
+            return ActionResult.failed(str(exc), category="device_connection")
+        return ActionResult.ok(f"pinch({start} -> {end} @ {x},{y}) on {device.name}")
+
+
+def _millis(value: Any) -> int:
+    return int(parse_duration(value) * 1000)
+
+
+def _parse_fingers(raw: Any) -> list[list[tuple[int, int]]]:
+    """Validate ``fingers: [[[x, y], ...], ...]`` into finger paths."""
+    if not isinstance(raw, list) or not raw:
+        raise ActionError("'fingers' must be a non-empty list of point lists.")
+    fingers: list[list[tuple[int, int]]] = []
+    for index, path in enumerate(raw):
+        if not isinstance(path, list) or not path:
+            raise ActionError(f"fingers[{index}] must be a non-empty list of [x, y] points.")
+        points: list[tuple[int, int]] = []
+        for point in path:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                raise ActionError(f"fingers[{index}] contains a non-[x, y] point: {point!r}.")
+            points.append((int(point[0]), int(point[1])))
+        fingers.append(points)
+    return fingers
+
+
 class _DeviceKeyAction(Action):
     name = "device.key"
 
@@ -346,6 +431,10 @@ def register(registry: ActionRegistry) -> None:
     registry.register(_DeviceLifecycleAction("device.reset", "reset_application"))
     registry.register(_DeviceTapAction())
     registry.register(_DeviceSwipeAction())
+    registry.register(_DeviceLongPressAction())
+    registry.register(_DeviceDragAction())
+    registry.register(_DeviceMultiTouchAction())
+    registry.register(_DevicePinchAction())
     registry.register(_DeviceKeyAction())
     registry.register(_WaitAction())
     registry.register(_WaitUntilAction())

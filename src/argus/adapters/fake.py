@@ -7,7 +7,7 @@ state in memory. All example tests run against these.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,7 @@ from PIL import ImageDraw, ImageFont
 from PIL.Image import Image
 
 from argus.adapters.backend import BackendAdapter
-from argus.adapters.base import Device, DeviceCapabilities
+from argus.adapters.base import Device, DeviceCapabilities, Point
 from argus.config.models import BackendConfig, DeviceConfig
 from argus.exceptions import DeviceConnectionError, ScreenshotError
 from argus.instrumentation.client import InstrumentationClient, InstrumentationStatus
@@ -51,6 +51,9 @@ class FakeDevice(Device):
         self.app_running = False
         self.taps: list[tuple[int, int]] = []
         self.swipes: list[tuple[int, int, int, int]] = []
+        self.long_presses: list[tuple[int, int, int]] = []
+        self.drags: list[tuple[int, int, int, int, int, int]] = []
+        self.multi_touches: list[tuple[list[list[Point]], int]] = []
         self.keys: list[str] = []
         self.log_lines: list[str] = ["fake device log"]
         self.screenshot_count = 0
@@ -81,6 +84,9 @@ class FakeDevice(Device):
             supports_screenshot=True,
             supports_tap=True,
             supports_swipe=True,
+            supports_long_press=True,
+            supports_drag=True,
+            supports_multi_touch=True,
             supports_keyboard=True,
             supports_app_lifecycle=True,
             supports_logs=True,
@@ -227,6 +233,17 @@ class FakeDevice(Device):
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         self.swipes.append((x1, y1, x2, y2))
+
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        self.long_presses.append((x, y, duration_ms))
+
+    def drag(
+        self, x1: int, y1: int, x2: int, y2: int, hold_ms: int = 500, duration_ms: int = 500
+    ) -> None:
+        self.drags.append((x1, y1, x2, y2, hold_ms, duration_ms))
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        self.multi_touches.append(([list(path) for path in fingers], duration_ms))
 
     def press_key(self, key: str) -> None:
         self.keys.append(key)
