@@ -98,6 +98,6 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = [
     "pytesseract", "cv2", "playwright", "playwright.*", "pyatv", "pyatv.*",
-    "serial", "serial.*", "esptool", "esptool.*",
+    "serial", "serial.*", "esptool", "esptool.*", "pyautogui",
 ]
 ignore_missing_imports = true

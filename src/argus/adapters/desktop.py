@@ -63,7 +63,7 @@ def _pyautogui_backend() -> DesktopBackend:
         ) from exc
     pyautogui.FAILSAFE = False  # a corner-of-screen mouse must not abort a test run
     pyautogui.PAUSE = 0  # gestures pace themselves; no per-call sleep
-    return pyautogui  # type: ignore[no-any-return]
+    return pyautogui
 
 
 class _LogPump(threading.Thread):
@@ -131,5 +131,10 @@ class _ProcessHandle:
                 self._process.kill()
                 self._process.wait(timeout=timeout)
         self._pump.join(timeout=2.0)
-        if self._process.stdout is not None:
+        # Only close the stream once the pump has actually exited: if join()
+        # timed out (e.g. a child that inherited the pipe to its own
+        # grandchildren keeps it open) the pump thread may still be blocked
+        # in stream.readline(), and closing the stream from this thread
+        # while that read is in flight would race with it.
+        if not self._pump.is_alive() and self._process.stdout is not None:
             self._process.stdout.close()
