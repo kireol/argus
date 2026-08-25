@@ -19,6 +19,7 @@ from PIL.Image import Image
 
 from argus.adapters.base import Device, DeviceCapabilities
 from argus.adapters.esp32.framebuffer import decode
+from argus.adapters.esp32.instrumentation import SerialInstrumentationClient
 from argus.adapters.esp32.protocol import AgentInfo, AgentLink
 from argus.adapters.esp32.transport import (
     SerialTransport,
@@ -29,6 +30,7 @@ from argus.adapters.esp32.transport import (
 )
 from argus.config.models import DeviceConfig
 from argus.exceptions import ConfigurationError, DeviceCapabilityError, DeviceConnectionError
+from argus.instrumentation.client import InstrumentationClient
 from argus.logging import get_logger
 from argus.models.common import HealthCheckResult, ScreenInfo
 
@@ -339,4 +341,9 @@ class Esp32Adapter(Device):
         link = self._require_agent("input", "press_key")
         link.request("input", key)
 
-    # instrumentation_client() is added by the serial instrumentation task.
+    # -- instrumentation ------------------------------------------------------------------
+
+    def instrumentation_client(self) -> InstrumentationClient | None:
+        if self._link is None or self._info is None or not (self._info.caps & {"status", "state"}):
+            return None
+        return SerialInstrumentationClient(self._link, self._info)

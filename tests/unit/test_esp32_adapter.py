@@ -247,6 +247,13 @@ class TestObservation:
         assert adapter.get_logs(lines=2).splitlines() == ["line8", "line9"]
         assert adapter.get_logs(lines=0) == ""
 
+    def test_instrumentation_client(self, adapter, transport):
+        assert adapter.instrumentation_client() is None
+        transport.answers["status"] = b'{"ready": true}'
+        adapter.connect()
+        client = adapter.instrumentation_client()
+        assert client is not None and client.status().ready is True
+
 
 class TestInput:
     def test_press_key_sends_input(self, adapter, transport):
