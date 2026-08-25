@@ -37,6 +37,55 @@ _MAX_LOG_LINES = 5000
 _RESET_TIMEOUT = 30.0
 _INSTALL = 'pip install "argus[desktop]"'
 
+# Android-style names -> pyautogui key names; anything else passes through lower-cased.
+_KEY_MAP = {
+    "ENTER": "enter",
+    "DPAD_CENTER": "enter",
+    "BACK": "escape",
+    "ESCAPE": "escape",
+    "TAB": "tab",
+    "SPACE": "space",
+    "DEL": "backspace",
+    "BACKSPACE": "backspace",
+    "DPAD_UP": "up",
+    "DPAD_DOWN": "down",
+    "DPAD_LEFT": "left",
+    "DPAD_RIGHT": "right",
+    "UP": "up",
+    "DOWN": "down",
+    "LEFT": "left",
+    "RIGHT": "right",
+    "HOME": "home",
+    "END": "end",
+    "PAGE_UP": "pageup",
+    "PAGE_DOWN": "pagedown",
+    "PLUS": "+",
+    "MINUS": "-",
+}
+_MODIFIERS = {"ctrl": "ctrl", "control": "ctrl", "alt": "alt", "option": "alt",
+              "shift": "shift", "cmd": "command", "command": "command", "win": "win",
+              "super": "win", "meta": "command"}
+
+
+def _map_key(name: str) -> str:
+    stripped = name.removeprefix("KEYCODE_")
+    if len(stripped) == 1:
+        return stripped
+    return _KEY_MAP.get(stripped.upper(), stripped.lower())
+
+
+def _chord(key: str) -> list[str] | None:
+    """``Ctrl+Shift+t`` -> ['ctrl', 'shift', 't']; None when ``key`` is not a chord."""
+    if "+" not in key or key == "+":
+        return None
+    parts = key.split("+")
+    # A trailing empty part means the literal '+' key: "Ctrl+Plus" is spelled "Ctrl++" too.
+    if parts[-1] == "":
+        parts = parts[:-1] + ["+"]
+    if len(parts) < 2:
+        return None
+    return [_MODIFIERS.get(p.lower(), _map_key(p)) for p in parts]
+
 
 class DesktopBackend(Protocol):
     """The slice of pyautogui the adapter relies on (fakeable)."""
@@ -475,3 +524,11 @@ class DesktopAdapter(Device):
         self, cx: int, cy: int, start_distance: int, end_distance: int, duration_ms: int = 500
     ) -> None:
         raise self._no_touch("pinch")
+
+    def press_key(self, key: str) -> None:
+        backend = self._require_backend()
+        chord = _chord(key)
+        if chord is not None:
+            backend.hotkey(*chord)
+        else:
+            backend.press(_map_key(key))
