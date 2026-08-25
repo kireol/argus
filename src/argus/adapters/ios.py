@@ -148,6 +148,22 @@ def _subprocess_spawner(argv: list[str]) -> Any:
     return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
+class _LogPump(threading.Thread):
+    """Copies a process's stdout lines into a bounded deque."""
+
+    def __init__(self, process: Any, sink: deque[str]) -> None:
+        super().__init__(daemon=True, name="ios-log")
+        self._process = process
+        self._sink = sink
+
+    def run(self) -> None:
+        stream = self._process.stdout
+        if stream is None:
+            return
+        for raw in iter(stream.readline, b""):
+            self._sink.append(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
+
+
 class IosAdapter(Device):
     """Controls an iOS app through WebDriverAgent."""
 
@@ -248,8 +264,15 @@ class IosAdapter(Device):
         self._session_id = str(session_id)
         self._scale = None
         self._screen_info = None
+        if self._log_command:
+            try:
+                self._start_log_stream()
+            except DeviceConnectionError:
+                self.disconnect()
+                raise
 
     def disconnect(self) -> None:
+        self._stop_log_stream()
         session_id, self._session_id = self._session_id, None
         if session_id is not None:
             with contextlib.suppress(DeviceConnectionError):
@@ -403,3 +426,37 @@ class IosAdapter(Device):
         else:
             text = _KEY_TEXT.get(upper, name)
             self._post("/wda/keys", {"value": list(text)})
+
+    # -- logs --------------------------------------------------------------------------------
+
+    def _start_log_stream(self) -> None:
+        argv = shlex.split(self._log_command or "")
+        self._logs.clear()
+        try:
+            self._log_process = self._spawn(argv)
+        except FileNotFoundError as exc:
+            raise DeviceConnectionError(
+                f"log_command binary not found: {argv[0] if argv else '<empty>'!r}.",
+                remediation="Install it (Xcode for xcrun, libimobiledevice for idevicesyslog) "
+                "or remove devices.<name>.log_command.",
+            ) from exc
+        self._log_pump = _LogPump(self._log_process, self._logs)
+        self._log_pump.start()
+
+    def _stop_log_stream(self) -> None:
+        process, self._log_process = self._log_process, None
+        if process is not None:
+            with contextlib.suppress(Exception):
+                process.terminate()
+            with contextlib.suppress(Exception):
+                process.wait(timeout=2.0)
+        pump, self._log_pump = self._log_pump, None
+        if pump is not None:
+            pump.join(timeout=2.0)
+
+    def get_logs(self, lines: int = 200) -> str:
+        if self._log_command is None:
+            raise self._unsupported("get_logs")
+        if lines <= 0:
+            return ""
+        return "\n".join(list(self._logs)[-lines:])

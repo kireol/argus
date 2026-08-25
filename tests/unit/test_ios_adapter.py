@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import time
 from typing import Any
 
 import pytest
@@ -11,7 +12,12 @@ from PIL import Image
 
 from argus.adapters.ios import IosAdapter, _HttpWdaClient
 from argus.config.models import DeviceConfig
-from argus.exceptions import ConfigurationError, DeviceConnectionError, ScreenshotError
+from argus.exceptions import (
+    ConfigurationError,
+    DeviceCapabilityError,
+    DeviceConnectionError,
+    ScreenshotError,
+)
 
 
 def _png(size: tuple[int, int] = (4, 6)) -> bytes:
@@ -326,3 +332,69 @@ class TestKeys:
         adapter.connect()
         adapter.press_key(key)
         assert wda.calls[-1] == ("POST", path, body)
+
+
+class FakeProcess:
+    def __init__(self, lines: list[str]) -> None:
+        self.stdout = io.BytesIO("".join(line + "\n" for line in lines).encode())
+        self.terminated = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+
+def _wait_for(predicate, timeout: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+class TestLogs:
+    def test_get_logs_unsupported_without_log_command(self, adapter):
+        adapter.connect()
+        with pytest.raises(DeviceCapabilityError, match="get_logs"):
+            adapter.get_logs()
+
+    def test_log_command_is_spawned_and_pumped(self, wda):
+        process = FakeProcess(["boot", "Player: state=PLAYING"])
+        spawned: list[list[str]] = []
+
+        def spawn(argv):
+            spawned.append(argv)
+            return process
+
+        adapter = IosAdapter(
+            "iphone",
+            bundle_id="com.example.app",
+            log_command="xcrun simctl spawn booted log stream --predicate 'process == \"Ex\"'",
+            client_factory=lambda: wda,
+            spawner=spawn,
+        )
+        adapter.connect()
+        assert spawned == [
+            ["xcrun", "simctl", "spawn", "booted", "log", "stream", "--predicate",
+             'process == "Ex"']
+        ]
+        assert _wait_for(lambda: "Player: state=PLAYING" in adapter.get_logs())
+        assert adapter.get_logs(1) == "Player: state=PLAYING"
+        adapter.disconnect()
+        assert process.terminated
+
+    def test_missing_log_binary_raises_remediated(self, wda):
+        def spawn(argv):
+            raise FileNotFoundError(argv[0])
+
+        adapter = IosAdapter(
+            "iphone", bundle_id="com.example.app", log_command="idevicesyslog",
+            client_factory=lambda: wda, spawner=spawn,
+        )
+        with pytest.raises(DeviceConnectionError, match="idevicesyslog"):
+            adapter.connect()
+        # connect failed after the session was created: it must be cleaned up
+        assert ("DELETE", "/session/S1", None) in wda.calls
