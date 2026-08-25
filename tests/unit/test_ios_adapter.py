@@ -163,3 +163,28 @@ class TestConfig:
     def test_from_config_requires_bundle_id(self):
         with pytest.raises(ConfigurationError, match="bundle_id"):
             IosAdapter.from_config("iphone", DeviceConfig.model_validate({"type": "ios"}))
+
+
+class TestLifecycle:
+    def test_start_stop_reset(self, adapter, wda):
+        adapter.connect()
+        adapter.start_application()
+        adapter.stop_application()
+        adapter.reset_application()
+        launches = [b for m, p, b in wda.calls if p == "/session/S1/wda/apps/launch"]
+        terminates = [b for m, p, b in wda.calls if p == "/session/S1/wda/apps/terminate"]
+        assert launches == [{"bundleId": "com.example.app"}] * 2
+        assert terminates == [{"bundleId": "com.example.app"}] * 2
+        # reset = terminate then launch, in that order
+        order = [p for _, p, _ in wda.calls[-2:]]
+        assert order == ["/session/S1/wda/apps/terminate", "/session/S1/wda/apps/launch"]
+
+    def test_is_application_running_reads_state(self, adapter, wda):
+        adapter.connect()
+        assert adapter.is_application_running() is True
+        wda.responses[("POST", "/session/S1/wda/apps/state")] = {"value": 1}
+        assert adapter.is_application_running() is False
+
+    def test_lifecycle_before_connect_raises(self, adapter):
+        with pytest.raises(DeviceConnectionError, match="not connected"):
+            adapter.start_application()
