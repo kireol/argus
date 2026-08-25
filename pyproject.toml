@@ -40,7 +40,7 @@ yocto = ["paramiko>=3.4"]
 ocr = ["pytesseract>=0.3.10"]
 browser = ["playwright>=1.45"]
 appletv = ["pyatv>=0.14"]
-esp32 = ["pyserial>=3.5", "esptool>=4.7"]
+esp32 = ["pyserial>=3.5", "esptool>=4.7,<6"]
 dev = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
