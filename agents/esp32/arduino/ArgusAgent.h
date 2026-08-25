@@ -163,22 +163,68 @@ class ArgusAgent {
     stream_->flush();
   }
 
-  void sendJson(const char* cmd, const Entry* table, size_t count) {
-    // Built in a small buffer: 16 entries * (32+32+6) fits in 1200 bytes.
-    static char json[kMaxEntries * (2 * kValueLen + 6) + 2];
-    size_t pos = 0;
-    json[pos++] = '{';
-    for (size_t i = 0; i < count; ++i) {
-      if (i) json[pos++] = ',';
-      pos += snprintf(json + pos, sizeof(json) - pos, "\"%s\":", table[i].key);
-      if (table[i].quoted) {
-        pos += snprintf(json + pos, sizeof(json) - pos, "\"%s\"", table[i].value);
+  // Length of `s` once JSON-escaped (excluding the surrounding quotes):
+  // `"` and `\` cost 2 bytes, control chars < 0x20 cost 6 (`\u00XX`), everything else 1.
+  static size_t jsonEscapedLength(const char* s) {
+    size_t n = 0;
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p) {
+      if (*p == '"' || *p == '\\') n += 2;
+      else if (*p < 0x20) n += 6;
+      else n += 1;
+    }
+    return n;
+  }
+
+  // Writes `"<escaped s>"` to the stream.
+  void writeJsonString(const char* s) {
+    stream_->print('"');
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p) {
+      if (*p == '"') {
+        stream_->print("\\\"");
+      } else if (*p == '\\') {
+        stream_->print("\\\\");
+      } else if (*p < 0x20) {
+        char buf[7];
+        snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)*p);
+        stream_->print(buf);
       } else {
-        pos += snprintf(json + pos, sizeof(json) - pos, "%s", table[i].value);
+        stream_->write(*p);
       }
     }
-    json[pos++] = '}';
-    ok(cmd, (const uint8_t*)json, pos);
+    stream_->print('"');
+  }
+
+  // Streams `{"k":v,...}` for `table`. Keys are always JSON-escaped strings; values are
+  // escaped strings when `quoted`, else emitted verbatim (numbers/true/false, which never
+  // need escaping). The total length is computed in a first pass so the "ok <len>" header
+  // can be sent before the body, without building the whole JSON blob in memory.
+  void sendJson(const char* cmd, const Entry* table, size_t count) {
+    size_t len = 2;  // '{' + '}'
+    for (size_t i = 0; i < count; ++i) {
+      if (i) len += 1;  // ','
+      len += 2 + jsonEscapedLength(table[i].key);  // "key"
+      len += 1;                                    // ':'
+      len += table[i].quoted ? 2 + jsonEscapedLength(table[i].value) : strlen(table[i].value);
+    }
+    stream_->print(prefix());
+    stream_->print(cmd);
+    stream_->print(" ok ");
+    stream_->print((unsigned long)len);
+    stream_->print('\n');
+    stream_->print('{');
+    for (size_t i = 0; i < count; ++i) {
+      if (i) stream_->print(',');
+      writeJsonString(table[i].key);
+      stream_->print(':');
+      if (table[i].quoted) {
+        writeJsonString(table[i].value);
+      } else {
+        stream_->print(table[i].value);
+      }
+    }
+    stream_->print('}');
+    stream_->print('\n');
+    stream_->flush();
   }
 
   void handleLine(char* line) {
