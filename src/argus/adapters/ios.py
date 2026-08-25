@@ -127,6 +127,10 @@ def _decode(raw: bytes) -> dict[str, Any]:
 _DOWN = {"type": "pointerDown", "button": 0}
 _UP = {"type": "pointerUp", "button": 0}
 
+_BUTTONS = {"VOLUME_UP": "volumeUp", "VOLUME_DOWN": "volumeDown", "LOCK": "lock"}
+_KEY_TEXT = {"ENTER": "\n", "DPAD_CENTER": "\n", "DEL": "\b", "BACKSPACE": "\b", "TAB": "\t",
+             "SPACE": " "}
+
 
 def _pause(duration_ms: int) -> dict[str, Any]:
     return {"type": "pause", "duration": duration_ms}
@@ -388,3 +392,14 @@ class IosAdapter(Device):
             actions.append(_UP)
             sources.append(self._finger(index, actions))
         self._perform(sources)
+
+    def press_key(self, key: str) -> None:
+        name = key.removeprefix("KEYCODE_")
+        upper = name.upper()
+        if upper == "HOME":
+            self._post("/wda/homescreen", {})
+        elif upper in _BUTTONS:
+            self._post("/wda/pressButton", {"name": _BUTTONS[upper]})
+        else:
+            text = _KEY_TEXT.get(upper, name)
+            self._post("/wda/keys", {"value": list(text)})
