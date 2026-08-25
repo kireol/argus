@@ -44,10 +44,10 @@ backend:
 
 devices:
   <name>:                    # the name used in requires.devices / reports
-    type: android            # android | yocto | browser | roku | tvos_sim | appletv | fake | plugin-provided
+    type: android            # android | yocto | browser | roku | tvos_sim | appletv | esp32 | fake | plugin-provided
     platform: android        # filtering label; defaults to type
     instrumentation:         # optional, per device
-      type: http             # http | fake
+      type: http             # http | fake | device
       base_url: http://127.0.0.1:8085
       timeout: 5s
       status_endpoint: /test/status

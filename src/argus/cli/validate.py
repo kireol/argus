@@ -274,7 +274,12 @@ def _device_section(session: RunSession, name: str) -> ValidationSection:
     else:
         section.add("Screenshot", CheckState.WARN, "not supported", required=False)
 
-    client = session.instrumentation(name)
+    try:
+        client = session.instrumentation(name)
+    except UTFError as exc:
+        section.add("Instrumentation", CheckState.FAIL, str(exc))
+        return section
+
     if client is None:
         section.add(
             "Instrumentation", CheckState.NOT_CONFIGURED, "", required=False

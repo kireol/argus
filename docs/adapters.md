@@ -59,6 +59,7 @@ never a silent no-op.
 | `roku` | ECP + dev installer | developer-mode Roku with a sideloaded channel, see [roku.md](roku.md) |
 | `tvos_sim` | `xcrun simctl` + `osascript` | tvOS app in the Xcode Simulator, see [tvos.md](tvos.md) |
 | `appletv` | pyatv | physical Apple TV (remote + playback state, no screenshots), see [tvos.md](tvos.md) |
+| `esp32` | serial agent / Wokwi | ESP32 firmware: logs, framebuffer screenshots, keys, see [esp32.md](esp32.md) |
 | `fake` | in-memory | hardware-free development & framework self-tests |
 
 ## The fake ecosystem
