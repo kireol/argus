@@ -48,6 +48,12 @@ def real_board():
         pytest.skip("ARGUS_ESP32_PORT not set")
     device = Esp32Adapter("board", transport="serial", port=PORT, boot_timeout=20.0)
     device.connect()
+    name = device.health_check().details.get("name")
+    if name != "ssd1306_menu":
+        device.disconnect()
+        pytest.skip(
+            f"board at {PORT} is not running the ssd1306_menu firmware (got {name!r})"
+        )
     yield device
     device.disconnect()
 

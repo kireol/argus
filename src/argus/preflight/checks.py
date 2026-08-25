@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 from argus.config.models import PreflightTcpService
+from argus.exceptions import UTFError
 from argus.models.results import PreflightResult
 from argus.models.test_definition import ConditionSpec, TestDefinition
 from argus.utilities.variables import expand_variables
@@ -225,7 +226,14 @@ class InstrumentationCheck(PreflightCheck):
         return f"Instrumentation: {self._device_name}"
 
     def run(self) -> PreflightResult:
-        client = self._session.instrumentation(self._device_name)
+        try:
+            client = self._session.instrumentation(self._device_name)
+        except UTFError as exc:
+            return self._result(
+                False,
+                error=exc.message,
+                remediation=exc.remediation or "Check the device's instrumentation configuration.",
+            )
         if client is None:
             return self._result(
                 not self.required,
