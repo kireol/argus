@@ -7,9 +7,11 @@ Talks to emulators or physical devices through the ``adb`` binary using
 from __future__ import annotations
 
 import io
+import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -174,6 +176,11 @@ class AndroidAdapter(Device):
 
     # -- connection -----------------------------------------------------------------
 
+    @property
+    def serial(self) -> str | None:
+        """Serial of the device this adapter talks to (resolved on connect)."""
+        return self._serial
+
     def connect(self) -> None:
         devices = self.list_devices(adb_path=self._adb_path)
         if not devices:
@@ -183,13 +190,9 @@ class AndroidAdapter(Device):
                 "'adb devices'.",
             )
         if self._serial is None:
-            if len(devices) > 1:
-                raise ConfigurationError(
-                    f"Multiple Android devices detected ({', '.join(devices)}) "
-                    "but no serial configured.",
-                    remediation="Set devices.<name>.serial to choose one.",
-                )
-            self._serial = devices[0]
+            self._serial = os.environ.get("ANDROID_SERIAL") or None
+        if self._serial is None:
+            self._serial = devices[0] if len(devices) == 1 else _choose_device(devices)
         elif self._serial not in devices:
             raise DeviceConnectionError(
                 f"Android device {self._serial!r} not found. "
@@ -461,3 +464,42 @@ def _hold_then_move(
         delay = 0 if step == steps else _TOUCH_FRAME_MS
         frames.append(([interpolate_path([start, end], step, steps)], delay))
     return frames
+
+
+def _interactive() -> bool:
+    """True when a human can answer a prompt (stdin and stderr are terminals)."""
+    try:
+        return sys.stdin.isatty() and sys.stderr.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _choose_device(devices: list[str]) -> str:
+    """Pick one of several connected devices, asking the user when interactive."""
+    listing = "\n".join(f"  {i}. {serial}" for i, serial in enumerate(devices, start=1))
+    hint = (
+        "Tip: skip this prompt by setting the ANDROID_SERIAL environment "
+        f"variable, e.g.\n    export ANDROID_SERIAL={devices[0]}\n"
+        "or by setting devices.<name>.serial in your config."
+    )
+    if not _interactive():
+        raise ConfigurationError(
+            f"Multiple Android devices detected ({', '.join(devices)}) "
+            "but no serial configured.",
+            remediation="Set the ANDROID_SERIAL environment variable "
+            f"(e.g. ANDROID_SERIAL={devices[0]}) or devices.<name>.serial.",
+        )
+    print(f"\nMultiple Android devices detected:\n{listing}\n", file=sys.stderr)
+    print(f"Warning: {hint}\n", file=sys.stderr)
+    while True:
+        try:
+            answer = input(f"Enter the number of the device to use [1-{len(devices)}]: ")
+        except EOFError as exc:
+            raise ConfigurationError(
+                "No device selected.",
+                remediation=f"Set ANDROID_SERIAL (e.g. ANDROID_SERIAL={devices[0]}).",
+            ) from exc
+        answer = answer.strip()
+        if answer.isdigit() and 1 <= int(answer) <= len(devices):
+            return devices[int(answer) - 1]
+        print(f"Please enter a number between 1 and {len(devices)}.", file=sys.stderr)

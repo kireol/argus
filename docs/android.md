@@ -16,7 +16,7 @@ only — no Android Studio, no Appium.
 devices:
   android:
     type: android
-    serial: ${ANDROID_SERIAL}       # optional if exactly one device is connected
+    serial: ${ANDROID_SERIAL}       # optional; see "Device selection" below
     app_package: com.example.app    # enables lifecycle operations
     app_activity: .MainActivity     # optional; monkey launcher is used otherwise
     adb_path: adb                   # optional
@@ -28,6 +28,30 @@ devices:
 
 Tip for emulator instrumentation: forward the app's instrumentation port to
 the host once per boot: `adb forward tcp:8085 tcp:8085`.
+
+## Device selection
+
+When `serial` is not set, the adapter resolves the target at connect time
+(which is when the pre-flight `Device:` check runs):
+
+1. The `ANDROID_SERIAL` environment variable, if set.
+2. If exactly one device/emulator is listed by `adb devices`, it is used.
+3. If several are connected and Argus is running in a terminal, it prints a
+   numbered list and asks which one to use:
+
+   ```text
+   Multiple Android devices detected:
+     1. emulator-5554
+     2. emulator-5556
+
+   Warning: Tip: skip this prompt by setting the ANDROID_SERIAL environment
+   variable, e.g.
+       export ANDROID_SERIAL=emulator-5554
+   Enter the number of the device to use [1-2]:
+   ```
+
+   Non-interactive runs (CI, the MCP server) fail the check instead, with the
+   same `ANDROID_SERIAL` hint.
 
 ## What the adapter does
 
