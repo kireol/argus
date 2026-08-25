@@ -1,0 +1,76 @@
+"""Esp32Adapter against the SSD1306 example in Wokwi (or a real board). Skips when unavailable."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import time
+from pathlib import Path
+
+import pytest
+
+from argus.adapters.esp32 import Esp32Adapter
+
+pytestmark = pytest.mark.integration
+
+EXAMPLE = Path(__file__).resolve().parents[2] / "agents/esp32/examples/ssd1306_menu"
+PORT = os.environ.get("ARGUS_ESP32_PORT")
+
+
+def _wait_for_log(device: Esp32Adapter, needle: str, timeout: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if needle in device.get_logs():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.fixture
+def wokwi_board():
+    if not os.environ.get("WOKWI_CLI_TOKEN"):
+        pytest.skip("WOKWI_CLI_TOKEN not set")
+    if shutil.which("wokwi-cli") is None:
+        pytest.skip("wokwi-cli not on PATH")
+    if not (EXAMPLE / "firmware.bin").is_file():
+        pytest.skip(
+            "example firmware.bin not built (see agents/esp32/examples/ssd1306_menu/BUILD.md)"
+        )
+    device = Esp32Adapter("sim", transport="wokwi", project_dir=EXAMPLE, boot_timeout=60.0)
+    device.connect()
+    yield device
+    device.disconnect()
+
+
+@pytest.fixture
+def real_board():
+    if not PORT:
+        pytest.skip("ARGUS_ESP32_PORT not set")
+    device = Esp32Adapter("board", transport="serial", port=PORT, boot_timeout=20.0)
+    device.connect()
+    yield device
+    device.disconnect()
+
+
+def _exercise(device: Esp32Adapter) -> None:
+    assert device.health_check().healthy
+    assert device.get_screen_info().size == (128, 64)
+    assert _wait_for_log(device, "menu: selected=Play")
+    img = device.screenshot()
+    assert img.size == (128, 64)
+    assert img.getpixel((123, 59)) == (255, 255, 255)  # marker block
+    assert img.getpixel((64, 40)) == (0, 0, 0)  # empty area between menu rows
+    device.press_key("BTN_DOWN")
+    assert _wait_for_log(device, "menu: selected=Settings")
+    client = device.instrumentation_client()
+    assert client is not None and client.state()["selected"] == 1
+    device.reset_application()
+    assert _wait_for_log(device, "menu: selected=Play")
+
+
+def test_wokwi_example(wokwi_board: Esp32Adapter):
+    _exercise(wokwi_board)
+
+
+def test_real_board(real_board: Esp32Adapter):
+    _exercise(real_board)
