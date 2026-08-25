@@ -480,10 +480,14 @@ class TestKeys:
             ("PAGE_DOWN", ("press", ("pagedown",))),
             ("HOME", ("press", ("home",))),
             ("a", ("press", ("a",))),
+            ("A", ("press", ("a",))),
             ("f5", ("press", ("f5",))),
             ("Ctrl+Plus", ("hotkey", ("ctrl", "+"))),
+            ("Shift+A", ("hotkey", ("shift", "a"))),
             ("Cmd+Shift+t", ("hotkey", ("command", "shift", "t"))),
             ("ctrl+alt+delete", ("hotkey", ("ctrl", "alt", "delete"))),
+            ("Ctrl++", ("hotkey", ("ctrl", "+"))),
+            ("+", ("press", ("+",))),
         ],
     )
     def test_press_key_mapping(self, adapter, backend, key, expected):

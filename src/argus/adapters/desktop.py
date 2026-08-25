@@ -70,7 +70,7 @@ _MODIFIERS = {"ctrl": "ctrl", "control": "ctrl", "alt": "alt", "option": "alt",
 def _map_key(name: str) -> str:
     stripped = name.removeprefix("KEYCODE_")
     if len(stripped) == 1:
-        return stripped
+        return stripped.lower()
     return _KEY_MAP.get(stripped.upper(), stripped.lower())
 
 
@@ -78,10 +78,13 @@ def _chord(key: str) -> list[str] | None:
     """``Ctrl+Shift+t`` -> ['ctrl', 'shift', 't']; None when ``key`` is not a chord."""
     if "+" not in key or key == "+":
         return None
-    parts = key.split("+")
-    # A trailing empty part means the literal '+' key: "Ctrl+Plus" is spelled "Ctrl++" too.
-    if parts[-1] == "":
-        parts = parts[:-1] + ["+"]
+    # A trailing '+' means the literal '+' key: "Ctrl+Plus" is spelled "Ctrl++" too.
+    # Splitting on "+" then leaves empty parts (one per consecutive "+"), which are
+    # dropped; the literal key is appended back once the split is done.
+    literal_plus = key.endswith("+")
+    parts = [p for p in key.split("+") if p != ""]
+    if literal_plus:
+        parts.append("+")
     if len(parts) < 2:
         return None
     return [_MODIFIERS.get(p.lower(), _map_key(p)) for p in parts]
