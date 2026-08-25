@@ -352,6 +352,58 @@ class DesktopAdapter(Device):
 
     # -- observation -------------------------------------------------------------------------
 
+    def _grab(self) -> Image:
+        backend = self._require_backend()
+        try:
+            image = backend.screenshot()
+        except Exception as exc:  # noqa: BLE001 - pyautogui/backend specific errors
+            raise ScreenshotError(
+                f"Desktop screenshot failed: {exc}", remediation=_display_remediation()
+            ) from exc
+        image = image.convert("RGB")
+        if sys.platform == "darwin" and image.getbbox() is None:
+            # PIL's getbbox() is None for an all-black image: macOS without Screen Recording
+            # permission returns exactly that instead of failing.
+            raise ScreenshotError(
+                "Desktop screenshot is entirely black.",
+                remediation="Grant your terminal Screen Recording permission "
+                "(System Settings > Privacy & Security > Screen Recording).",
+            )
+        return image
+
+    def screenshot(self) -> Image:
+        image = self._grab()
+        if self._region is None:
+            return image
+        x, y, width, height = self._region
+        if x < 0 or y < 0 or x + width > image.width or y + height > image.height:
+            raise ScreenshotError(
+                f"Desktop device {self.name!r}: region {self._region} exceeds the "
+                f"{image.width}x{image.height} screenshot.",
+                remediation="Adjust devices.<name>.region to lie within the screen.",
+            )
+        return image.crop((x, y, x + width, y + height))
+
+    def _pixel_ratio(self) -> float:
+        if self._ratio is None:
+            logical_width, _ = self._require_backend().size()
+            full = self._grab()
+            self._ratio = full.width / logical_width if logical_width > 0 else 1.0
+        return self._ratio
+
+    def get_screen_info(self) -> ScreenInfo:
+        if self._screen_info is None:
+            ratio = self._pixel_ratio()
+            image = self.screenshot()
+            self._screen_info = ScreenInfo(width=image.width, height=image.height, scale=ratio)
+        return self._screen_info
+
+    def _to_logical(self, point: Point) -> tuple[float, float]:
+        """Screenshot pixel (inside ``region`` if set) -> pyautogui logical coordinate."""
+        ratio = self._pixel_ratio()
+        offset_x, offset_y = (self._region[0], self._region[1]) if self._region else (0, 0)
+        return ((point[0] + offset_x) / ratio, (point[1] + offset_y) / ratio)
+
     def get_logs(self, lines: int = 200) -> str:
         if lines <= 0:
             return ""
