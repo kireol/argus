@@ -420,3 +420,15 @@ class TestLogs:
         adapter.connect()
         with pytest.raises(DeviceCapabilityError, match="get_logs"):
             adapter.get_logs()
+
+
+class TestRegistry:
+    def test_registered_as_ios(self):
+        from argus.adapters.registry import DeviceRegistry
+
+        registry = DeviceRegistry()
+        assert "ios" in registry.types()
+        device = registry.create(
+            "iphone", DeviceConfig.model_validate({"type": "ios", "bundle_id": "com.x.y"})
+        )
+        assert isinstance(device, IosAdapter)
