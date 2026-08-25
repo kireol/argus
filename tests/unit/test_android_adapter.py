@@ -210,3 +210,47 @@ def test_connect_multiple_devices_non_interactive_raises(monkeypatch) -> None:
     adapter = AndroidAdapter("phone")
     with pytest.raises(ConfigurationError, match="ANDROID_SERIAL"):
         adapter.connect()
+
+
+# -- adb argv / pidof ------------------------------------------------------------------
+
+
+class _Completed:
+    def __init__(self, returncode: int = 0, stdout: bytes = b"") -> None:
+        self.returncode, self.stdout, self.stderr = returncode, stdout, b""
+
+
+def _patch_adb(monkeypatch, responder):
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+        return responder(command)
+
+    monkeypatch.setattr("argus.adapters.android.shutil.which", lambda _: "/usr/bin/adb")
+    monkeypatch.setattr("argus.adapters.android.subprocess.run", fake_run)
+    return calls
+
+
+def test_adb_targets_serial_even_before_connect(monkeypatch) -> None:
+    _patch_devices(monkeypatch, ["emulator-5554", "emulator-5556"])
+    monkeypatch.setenv("ANDROID_SERIAL", "emulator-5556")
+    calls = _patch_adb(monkeypatch, lambda cmd: _Completed(0, b"1234\n"))
+    adapter = AndroidAdapter("phone", app_package="com.example.app")
+    assert adapter.is_application_running() is True
+    assert calls == [["adb", "-s", "emulator-5556", "shell", "pidof", "com.example.app"]]
+
+
+def test_is_application_running_false_when_pidof_exits_nonzero(monkeypatch) -> None:
+    _patch_adb(monkeypatch, lambda cmd: _Completed(1, b""))
+    adapter = AndroidAdapter("phone", serial="emulator-5554", app_package="com.example.app")
+    adapter._connected = True
+    assert adapter.is_application_running() is False
+
+
+def test_is_application_running_true_with_pid(monkeypatch) -> None:
+    calls = _patch_adb(monkeypatch, lambda cmd: _Completed(0, b"4321\n"))
+    adapter = AndroidAdapter("phone", serial="emulator-5554", app_package="com.example.app")
+    adapter._connected = True
+    assert adapter.is_application_running() is True
+    assert calls[0][:3] == ["adb", "-s", "emulator-5554"]
