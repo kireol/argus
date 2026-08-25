@@ -82,9 +82,10 @@ Every step may carry an optional `name:` used in reports.
 
 Gestures are only available where the device can produce them: pinch and
 multi-touch work on Android, iOS and chromium browsers; long press and drag
-additionally on the browser and desktop adapters (mouse-driven); TV platforms have no touch input
-(see each adapter's page); an unsupported gesture fails the step with a clear
-`DeviceCapabilityError` rather than silently doing nothing. Example:
+additionally on the browser and desktop adapters (mouse-driven); desktop and
+the TV platforms have no pinch/multi-touch input (see each adapter's page);
+an unsupported gesture fails the step with a clear `DeviceCapabilityError`
+rather than silently doing nothing. Example:
 
 ```yaml
 steps:

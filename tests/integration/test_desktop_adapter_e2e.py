@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from argus.adapters.desktop import DesktopAdapter
-from argus.exceptions import DeviceConnectionError
+from argus.exceptions import DeviceConnectionError, ScreenshotError
 
 pytestmark = pytest.mark.integration
 
@@ -20,7 +20,7 @@ def device():
     )
     try:
         adapter.connect()
-    except DeviceConnectionError as exc:
+    except (DeviceConnectionError, ScreenshotError) as exc:
         pytest.skip(f"no desktop display: {exc}")
     yield adapter
     adapter.disconnect()
