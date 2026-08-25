@@ -155,7 +155,7 @@ class TestRunner:
             )
 
             # -- pre-flight -----------------------------------------------------------
-            device_names = self._device_names_for(tests, options.filters)
+            device_names = self.device_names_for(tests, options.filters)
             if not options.skip_preflight:
                 checks = build_preflight_checks(session, tests, device_names)
                 results, passed = run_preflight(checks, self.events)
@@ -304,7 +304,7 @@ class TestRunner:
             )
         return steps
 
-    def _device_names_for(
+    def device_names_for(
         self, tests: list[TestDefinition], filters: TestFilter
     ) -> list[str]:
         platforms: set[str] = set(filters.platforms)

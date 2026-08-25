@@ -13,11 +13,12 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from argus import __version__
 from argus.config import default_user_config_path, load_config
 from argus.config.models import AppConfig
-from argus.engine.filters import TestFilter
+from argus.engine.filters import TestFilter, build_filter
 from argus.engine.runner import FailurePolicy, RunOptions, TestRunner
 from argus.events.bus import EventBus
 from argus.exceptions import UTFError
@@ -432,20 +433,7 @@ def _build_filter(
     tag: list[str] | None,
     platform: list[str] | None,
 ) -> TestFilter:
-    tags: list[str] = []
-    tag_expression: str | None = None
-    for value in tag or []:
-        if any(f" {op} " in f" {value} " for op in ("and", "or", "not")):
-            tag_expression = value
-        else:
-            tags.append(value)
-    return TestFilter(
-        test_ids=test or [],
-        features=feature or [],
-        tags=tags,
-        platforms=platform or [],
-        tag_expression=tag_expression,
-    )
+    return build_filter(test_ids=test, features=feature, tags=tag, platforms=platform)
 
 
 def _write_preflight_report(config: AppConfig, result) -> None:
@@ -581,6 +569,55 @@ def list_tests(
             platforms = f"  [dim]({', '.join(test.platforms)})[/dim]" if test.platforms else ""
             console.print(f"  {test.id:<10} {test.name}{platforms}")
     console.print(f"\n{len(tests)} tests.")
+
+
+# -- mcp ------------------------------------------------------------------------------------------
+
+
+@app.command()
+def mcp(
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", help="Configuration file.")
+    ] = None,
+    transport: Annotated[
+        str | None,
+        typer.Option(
+            "--transport",
+            help="stdio (default; for Claude Code, IDEs) or streamable-http (remote/CI).",
+        ),
+    ] = None,
+    host: Annotated[
+        str | None, typer.Option("--host", help="HTTP bind address (streamable-http).")
+    ] = None,
+    port: Annotated[
+        int | None, typer.Option("--port", help="HTTP port (streamable-http).", min=1)
+    ] = None,
+    path: Annotated[
+        str | None, typer.Option("--path", help="HTTP endpoint path (default /mcp).")
+    ] = None,
+) -> None:
+    """Serve Argus to AI clients over the Model Context Protocol.
+
+    Requires the optional dependency: pip install "argus[mcp]". Settings live
+    under ``mcp:`` in configuration; flags override them. With stdio, stdout
+    carries the protocol and all logging goes to stderr.
+    """
+    errors = Console(stderr=True, highlight=False)
+    if config is not None:
+        state.config_file = config
+    try:
+        app_config = load_config(state.config_file)
+    except UTFError as exc:
+        errors.print(f"[bold red]CONFIGURATION ERROR[/bold red]\n{escape(str(exc))}")
+        raise typer.Exit(2) from exc
+    _configure_logging(app_config)
+    try:
+        from argus.mcp.server import run_server
+
+        run_server(app_config, transport=transport, host=host, port=port, path=path)
+    except UTFError as exc:
+        errors.print(f"[bold red]MCP ERROR[/bold red]\n{escape(str(exc))}")
+        raise typer.Exit(2) from exc
 
 
 # -- misc ------------------------------------------------------------------------------------------
