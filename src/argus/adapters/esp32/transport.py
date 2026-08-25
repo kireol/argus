@@ -30,7 +30,7 @@ class Transport(Protocol):
 
 def serial_available() -> bool:
     try:
-        import serial  # type: ignore[import-untyped]  # noqa: F401
+        import serial  # noqa: F401
     except ImportError:
         return False
     return True
