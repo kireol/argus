@@ -17,7 +17,12 @@ from argus.adapters.desktop import (
     _pyautogui_backend,
 )
 from argus.config.models import DeviceConfig
-from argus.exceptions import ConfigurationError, DeviceConnectionError, ScreenshotError
+from argus.exceptions import (
+    ConfigurationError,
+    DeviceCapabilityError,
+    DeviceConnectionError,
+    ScreenshotError,
+)
 
 _CHILD = (
     "import sys, time\n"
@@ -416,3 +421,50 @@ class TestObservation:
         backend.fill = (0, 0, 0)
         img = adapter.screenshot()
         assert img.mode == "RGB"
+
+
+class TestGestures:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch):
+        self.sleeps: list[float] = []
+        monkeypatch.setattr("argus.adapters.desktop.time.sleep", self.sleeps.append)
+
+    def test_tap_clicks_logical_coordinates(self):
+        backend = FakeBackend(logical=(800, 600), pixels=(1600, 1200))
+        adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
+        adapter.connect()
+        adapter.tap(200, 100)
+        assert backend.calls[-1] == ("click", (100, 50))
+
+    def test_swipe_is_press_move_release(self, adapter, backend):
+        adapter.connect()
+        adapter.swipe(0, 0, 100, 50, duration_ms=300)
+        assert backend.calls[-3:] == [
+            ("mouseDown", (0, 0)),
+            ("moveTo", (100, 50, 0.3)),
+            ("mouseUp", ()),
+        ]
+        assert self.sleeps == []
+
+    def test_long_press_holds(self, adapter, backend):
+        adapter.connect()
+        adapter.long_press(10, 20, duration_ms=1500)
+        assert backend.calls[-2:] == [("mouseDown", (10, 20)), ("mouseUp", ())]
+        assert self.sleeps == [1.5]
+
+    def test_drag_holds_then_moves(self, adapter, backend):
+        adapter.connect()
+        adapter.drag(1, 2, 3, 4, hold_ms=250, duration_ms=500)
+        assert backend.calls[-3:] == [
+            ("mouseDown", (1, 2)),
+            ("moveTo", (3, 4, 0.5)),
+            ("mouseUp", ()),
+        ]
+        assert self.sleeps == [0.25]
+
+    def test_multi_touch_and_pinch_unsupported(self, adapter):
+        adapter.connect()
+        with pytest.raises(DeviceCapabilityError, match="touch injection"):
+            adapter.multi_touch([[(0, 0), (1, 1)]])
+        with pytest.raises(DeviceCapabilityError, match="Ctrl\\+Plus"):
+            adapter.pinch(100, 100, 50, 100)
