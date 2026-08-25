@@ -139,16 +139,24 @@ class AndroidAdapter(Device):
 
     # -- adb plumbing -------------------------------------------------------------
 
-    def _adb(self, *args: str, binary: bool = False, timeout: float | None = None) -> bytes:
+    def _adb(
+        self,
+        *args: str,
+        binary: bool = False,
+        timeout: float | None = None,
+        check: bool = True,
+    ) -> bytes:
         if shutil.which(self._adb_path) is None:
             raise DeviceConnectionError(
                 f"adb binary not found ({self._adb_path!r}).",
                 remediation="Install Android platform-tools and ensure 'adb' is on "
                 "PATH, or set devices.<name>.adb_path.",
             )
-        command = [self._adb_path]
-        if self._serial:
-            command += ["-s", self._serial]
+        if self._serial is None:
+            # Never issue an ambiguous command: resolve the target device first so
+            # adb cannot fail with "more than one device/emulator".
+            self.connect()
+        command = [self._adb_path, "-s", str(self._serial)]
         command += list(args)
         try:
             completed = subprocess.run(
@@ -163,13 +171,13 @@ class AndroidAdapter(Device):
                 f"{' '.join(args)}",
                 remediation="Check the device/emulator is responsive.",
             ) from exc
-        if completed.returncode != 0:
+        if check and completed.returncode != 0:
             stderr = completed.stderr.decode(errors="replace").strip()
             raise DeviceConnectionError(
                 f"adb {' '.join(args)} failed ({completed.returncode}): {stderr}",
                 remediation="Run 'adb devices' to check device state.",
             )
-        return completed.stdout if binary else completed.stdout
+        return completed.stdout
 
     def _shell(self, *args: str) -> str:
         return self._adb("shell", *args).decode(errors="replace")
@@ -275,8 +283,10 @@ class AndroidAdapter(Device):
 
     def is_application_running(self) -> bool:
         package = self._require_package()
-        output = self._shell("pidof", package)
-        return bool(output.strip())
+        # pidof exits non-zero when no process matches; that means "not running",
+        # not a device failure, so don't let _adb raise on it.
+        output = self._adb("shell", "pidof", package, check=False)
+        return bool(output.decode(errors="replace").strip())
 
     # -- observation -----------------------------------------------------------------------
 
