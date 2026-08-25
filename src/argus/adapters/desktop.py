@@ -34,6 +34,7 @@ from argus.models.common import HealthCheckResult, ScreenInfo
 from argus.utilities.duration import parse_duration
 
 _MAX_LOG_LINES = 5000
+_RESET_TIMEOUT = 30.0
 _INSTALL = 'pip install "argus[desktop]"'
 
 
@@ -165,6 +166,14 @@ def _display_remediation() -> str:
     )
 
 
+def _validate_region(name: str, region: tuple[int, int, int, int] | None) -> None:
+    if region is not None and (region[2] <= 0 or region[3] <= 0):
+        raise ConfigurationError(
+            f"Desktop device {name!r}: region width and height must be positive.",
+            remediation="Example: region: [0, 0, 1920, 1080]",
+        )
+
+
 class DesktopAdapter(Device):
     """Controls a native desktop application through pyautogui and a subprocess."""
 
@@ -192,6 +201,7 @@ class DesktopAdapter(Device):
         self._stop_timeout = float(stop_timeout)
         self._reset_command = reset_command
         self._region = region
+        _validate_region(name, region)
         self._platform = platform or _host_platform()
         self._backend_factory: BackendFactory = backend_factory or _pyautogui_backend
         self._backend: DesktopBackend | None = None
@@ -279,10 +289,27 @@ class DesktopAdapter(Device):
         return backend, (int(width), int(height))
 
     def connect(self) -> None:
-        backend, _size = self._probe()
+        backend, size = self._probe()
         self._backend = backend
         self._ratio = None
         self._screen_info = None
+        if sys.platform == "darwin":
+            image = self._grab()
+            if image.getbbox() is None:
+                # PIL's getbbox() is None for an all-black image. The app has not been
+                # launched yet at connect time, so a fully black desktop capture here
+                # means macOS is blocking screen recording, not that the app is
+                # legitimately rendering a black window.
+                self._backend = None
+                raise DeviceConnectionError(
+                    "Desktop screenshot is entirely black; macOS is blocking screen "
+                    "capture.",
+                    remediation="Grant your terminal Screen Recording permission "
+                    "(System Settings > Privacy & Security > Screen Recording), then "
+                    "restart the terminal.",
+                )
+            logical_width, _logical_height = size
+            self._ratio = image.width / logical_width if logical_width > 0 else 1.0
 
     def disconnect(self) -> None:
         if self._process is not None and self._process.running:
@@ -318,7 +345,7 @@ class DesktopAdapter(Device):
         if self._process is not None and self._process.running:
             self.stop_application()
         env = {**os.environ, **self._env} if self._env else None
-        self._logs.clear()
+        self._logs = deque(maxlen=_MAX_LOG_LINES)
         self._process = _ProcessHandle(
             [self._command, *self._args], cwd=self._cwd, env=env, sink=self._logs
         )
@@ -334,14 +361,21 @@ class DesktopAdapter(Device):
     def reset_application(self) -> None:
         self.stop_application()
         if self._reset_command:
-            completed = subprocess.run(
-                self._reset_command,
-                shell=True,
-                cwd=self._cwd,
-                capture_output=True,
-                timeout=max(self._stop_timeout, 30.0),
-                check=False,
-            )
+            timeout = max(self._stop_timeout, _RESET_TIMEOUT)
+            try:
+                completed = subprocess.run(
+                    self._reset_command,
+                    shell=True,
+                    cwd=self._cwd,
+                    capture_output=True,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise DeviceConnectionError(
+                    f"reset_command timed out after {timeout}s.",
+                    remediation="Check devices.<name>.reset_command exits on its own.",
+                ) from exc
             if completed.returncode != 0:
                 stderr = completed.stderr.decode(errors="replace").strip()
                 raise DeviceConnectionError(
@@ -360,16 +394,7 @@ class DesktopAdapter(Device):
             raise ScreenshotError(
                 f"Desktop screenshot failed: {exc}", remediation=_display_remediation()
             ) from exc
-        image = image.convert("RGB")
-        if sys.platform == "darwin" and image.getbbox() is None:
-            # PIL's getbbox() is None for an all-black image: macOS without Screen Recording
-            # permission returns exactly that instead of failing.
-            raise ScreenshotError(
-                "Desktop screenshot is entirely black.",
-                remediation="Grant your terminal Screen Recording permission "
-                "(System Settings > Privacy & Security > Screen Recording).",
-            )
-        return image
+        return image.convert("RGB")
 
     def screenshot(self) -> Image:
         image = self._grab()
