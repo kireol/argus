@@ -305,3 +305,24 @@ class TestGestures:
     def test_gesture_before_connect_raises(self, adapter):
         with pytest.raises(DeviceConnectionError, match="not connected"):
             adapter.tap(1, 1)
+
+
+class TestKeys:
+    @pytest.mark.parametrize(
+        ("key", "path", "body"),
+        [
+            ("HOME", "/session/S1/wda/homescreen", {}),
+            ("KEYCODE_HOME", "/session/S1/wda/homescreen", {}),
+            ("VOLUME_UP", "/session/S1/wda/pressButton", {"name": "volumeUp"}),
+            ("VOLUME_DOWN", "/session/S1/wda/pressButton", {"name": "volumeDown"}),
+            ("LOCK", "/session/S1/wda/pressButton", {"name": "lock"}),
+            ("ENTER", "/session/S1/wda/keys", {"value": ["\n"]}),
+            ("DEL", "/session/S1/wda/keys", {"value": ["\b"]}),
+            ("a", "/session/S1/wda/keys", {"value": ["a"]}),
+            ("hello", "/session/S1/wda/keys", {"value": ["h", "e", "l", "l", "o"]}),
+        ],
+    )
+    def test_press_key_mapping(self, adapter, wda, key, path, body):
+        adapter.connect()
+        adapter.press_key(key)
+        assert wda.calls[-1] == ("POST", path, body)
