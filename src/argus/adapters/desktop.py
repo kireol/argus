@@ -93,12 +93,17 @@ def _chord(key: str) -> list[str] | None:
 class DesktopBackend(Protocol):
     """The slice of pyautogui the adapter relies on (fakeable)."""
 
+    KEYBOARD_KEYS: Any
+
     def size(self) -> tuple[int, int]: ...
     def screenshot(self) -> Image: ...
     def click(self, x: float, y: float) -> None: ...
     def mouseDown(self, x: float, y: float) -> None: ...  # noqa: N802 - pyautogui names
     def mouseUp(self) -> None: ...  # noqa: N802
     def moveTo(self, x: float, y: float, duration: float = 0.0) -> None: ...  # noqa: N802
+    def dragTo(  # noqa: N802
+        self, x: float, y: float, duration: float = 0.0, *, mouseDownUp: bool = True  # noqa: N803
+    ) -> None: ...
     def press(self, key: str) -> None: ...
     def hotkey(self, *keys: str) -> None: ...
 
@@ -109,13 +114,19 @@ BackendFactory = Callable[[], DesktopBackend]
 def _pyautogui_backend() -> DesktopBackend:
     try:
         import pyautogui
+
+        pyautogui.FAILSAFE = False  # a corner-of-screen mouse must not abort a test run
+        pyautogui.PAUSE = 0  # gestures pace themselves; no per-call sleep
     except ImportError as exc:
         raise DeviceConnectionError(
             "pyautogui is not installed (required for desktop devices).",
             remediation=f"Install desktop support: {_INSTALL}",
         ) from exc
-    pyautogui.FAILSAFE = False  # a corner-of-screen mouse must not abort a test run
-    pyautogui.PAUSE = 0  # gestures pace themselves; no per-call sleep
+    except Exception as exc:  # noqa: BLE001 - e.g. the X11 backend raising at import time
+        raise DeviceConnectionError(
+            f"pyautogui failed to initialise: {exc}",
+            remediation=_display_remediation(),
+        ) from exc
     return pyautogui
 
 
@@ -280,12 +291,19 @@ class DesktopAdapter(Device):
                     f"Desktop device {name!r}: region must be [x, y, width, height].",
                     remediation="Example: region: [0, 0, 1920, 1080]",
                 )
-            region = (
-                int(raw_region[0]),
-                int(raw_region[1]),
-                int(raw_region[2]),
-                int(raw_region[3]),
-            )
+            try:
+                region = (
+                    int(raw_region[0]),
+                    int(raw_region[1]),
+                    int(raw_region[2]),
+                    int(raw_region[3]),
+                )
+            except (TypeError, ValueError) as exc:
+                raise ConfigurationError(
+                    f"Desktop device {name!r}: region must be four integers "
+                    "[x, y, width, height].",
+                    remediation="Example: region: [0, 0, 1920, 1080]",
+                ) from exc
         env = options.get("env")
         return cls(
             name,
@@ -330,9 +348,11 @@ class DesktopAdapter(Device):
 
     def _probe(self) -> tuple[DesktopBackend, tuple[int, int]]:
         """Check the display is reachable WITHOUT mutating connection state."""
-        backend = self._backend_factory()
         try:
+            backend = self._backend_factory()
             width, height = backend.size()
+        except DeviceConnectionError:
+            raise
         except Exception as exc:  # noqa: BLE001 - pyautogui raises assorted backend errors
             raise DeviceConnectionError(
                 f"Desktop device {self.name!r}: no display available ({exc}).",
@@ -346,7 +366,15 @@ class DesktopAdapter(Device):
         self._ratio = None
         self._screen_info = None
         if sys.platform == "darwin":
-            image = self._grab()
+            try:
+                image = self._grab()
+            except ScreenshotError as exc:
+                self._backend = None
+                raise DeviceConnectionError(
+                    f"Desktop device {self.name!r}: screenshot probe failed "
+                    f"({exc.message}).",
+                    remediation=_display_remediation(),
+                ) from exc
             if image.getbbox() is None:
                 # PIL's getbbox() is None for an all-black image. The app has not been
                 # launched yet at connect time, so a fully black desktop capture here
@@ -406,9 +434,14 @@ class DesktopAdapter(Device):
             time.sleep(self._startup_wait)
 
     def stop_application(self) -> None:
-        process, self._process = self._process, None
-        if process is not None:
+        process = self._process
+        if process is None:
+            return
+        try:
             process.stop(timeout=self._stop_timeout)
+        finally:
+            if not process.running:
+                self._process = None
 
     def reset_application(self) -> None:
         self.stop_application()
@@ -430,8 +463,10 @@ class DesktopAdapter(Device):
                 ) from exc
             if completed.returncode != 0:
                 stderr = completed.stderr.decode(errors="replace").strip()
+                stdout = completed.stdout.decode(errors="replace").strip()
+                detail = (stderr or stdout)[-500:]
                 raise DeviceConnectionError(
-                    f"reset_command failed (exit {completed.returncode}): {stderr}",
+                    f"reset_command failed (exit {completed.returncode}): {detail}",
                     remediation="Check devices.<name>.reset_command runs cleanly by hand.",
                 )
         self.start_application()
@@ -502,7 +537,9 @@ class DesktopAdapter(Device):
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         backend = self._require_backend()
         backend.mouseDown(*self._to_logical((x1, y1)))
-        backend.moveTo(*self._to_logical((x2, y2)), duration=duration_ms / 1000)
+        backend.dragTo(
+            *self._to_logical((x2, y2)), duration=duration_ms / 1000, mouseDownUp=False
+        )
         backend.mouseUp()
 
     def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
@@ -517,7 +554,9 @@ class DesktopAdapter(Device):
         backend = self._require_backend()
         backend.mouseDown(*self._to_logical((x1, y1)))
         time.sleep(hold_ms / 1000)
-        backend.moveTo(*self._to_logical((x2, y2)), duration=duration_ms / 1000)
+        backend.dragTo(
+            *self._to_logical((x2, y2)), duration=duration_ms / 1000, mouseDownUp=False
+        )
         backend.mouseUp()
 
     def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
@@ -528,10 +567,24 @@ class DesktopAdapter(Device):
     ) -> None:
         raise self._no_touch("pinch")
 
+    def _validate_key_name(self, key: str, name: str, valid: Any) -> None:
+        if valid is not None and name not in valid:
+            raise DeviceCapabilityError(
+                f"Desktop device {self.name!r} cannot press {key!r}: {name!r} is not a "
+                "pyautogui key name.",
+                remediation="Use a single character, a chord like Ctrl+Shift+t, or a "
+                "pyautogui key name (enter, escape, up, f5, pagedown, ...).",
+            )
+
     def press_key(self, key: str) -> None:
         backend = self._require_backend()
+        valid = getattr(backend, "KEYBOARD_KEYS", None)
         chord = _chord(key)
         if chord is not None:
+            for name in chord:
+                self._validate_key_name(key, name, valid)
             backend.hotkey(*chord)
         else:
-            backend.press(_map_key(key))
+            name = _map_key(key)
+            self._validate_key_name(key, name, valid)
+            backend.press(name)

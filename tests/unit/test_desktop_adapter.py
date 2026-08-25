@@ -41,12 +41,39 @@ def _wait_for(predicate, timeout: float = 3.0) -> bool:
     return False
 
 
+@pytest.fixture(autouse=True)
+def _pin_platform(monkeypatch):
+    """Pin the host platform to linux so tests don't depend on where they run.
+
+    Tests that need another platform (e.g. darwin's screenshot probe) call
+    `monkeypatch.setattr(sys, "platform", ...)` themselves; that happens
+    later in the test body, on the same `monkeypatch` fixture instance, so
+    it overrides this default.
+    """
+    monkeypatch.setattr(sys, "platform", "linux")
+
+
 class TestBackendImport:
     def test_missing_pyautogui_is_remediated(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "pyautogui", None)  # makes `import pyautogui` fail
         with pytest.raises(DeviceConnectionError, match="pyautogui") as info:
             _pyautogui_backend()
         assert 'argus[desktop]' in (info.value.remediation or "")
+
+    def test_pyautogui_init_failure_is_remediated(self, monkeypatch):
+        # Simulates a headless Linux X11 backend raising during initialisation
+        # (e.g. once pyautogui is imported but touching it fails). We stub
+        # sys.modules["pyautogui"] with an object whose attribute assignment
+        # raises, so the FAILSAFE/PAUSE setup inside _pyautogui_backend blows
+        # up without needing a real pyautogui install.
+        class _RaisingStub:
+            def __setattr__(self, name: str, value: object) -> None:
+                raise RuntimeError("no X server")
+
+        monkeypatch.setitem(sys.modules, "pyautogui", _RaisingStub())
+        with pytest.raises(DeviceConnectionError, match="failed to initialise") as info:
+            _pyautogui_backend()
+        assert info.value.remediation
 
 
 class TestProcessHandle:
@@ -101,11 +128,13 @@ class FakeBackend:
         logical: tuple[int, int] = (800, 600),
         pixels: tuple[int, int] = (800, 600),
         fail_size: bool = False,
+        fail_screenshot: bool = False,
     ) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.logical = logical
         self.pixels = pixels
         self.fail_size = fail_size
+        self.fail_screenshot = fail_screenshot
         self.fill = (10, 20, 30)
 
     def size(self) -> tuple[int, int]:
@@ -115,6 +144,8 @@ class FakeBackend:
 
     def screenshot(self) -> Image.Image:
         self.calls.append(("screenshot", ()))
+        if self.fail_screenshot:
+            raise RuntimeError("screencapture failed")
         return Image.new("RGB", self.pixels, self.fill)
 
     def click(self, x: float, y: float) -> None:
@@ -129,11 +160,23 @@ class FakeBackend:
     def moveTo(self, x: float, y: float, duration: float = 0.0) -> None:  # noqa: N802
         self.calls.append(("moveTo", (x, y, duration)))
 
+    def dragTo(  # noqa: N802
+        self, x: float, y: float, duration: float = 0.0, *, mouseDownUp: bool = True  # noqa: N803
+    ) -> None:
+        self.calls.append(("dragTo", (x, y, duration, mouseDownUp)))
+
     def press(self, key: str) -> None:
         self.calls.append(("press", (key,)))
 
     def hotkey(self, *keys: str) -> None:
         self.calls.append(("hotkey", keys))
+
+    KEYBOARD_KEYS = frozenset(
+        {
+            "enter", "escape", "left", "pagedown", "home", "a", "f5", "ctrl", "+",
+            "command", "shift", "t", "alt", "delete", "win",
+        }
+    )
 
 
 @pytest.fixture
@@ -192,6 +235,27 @@ class TestConnection:
         assert "DISPLAY" in (info.value.remediation or "")
         assert adapter.is_available() is False
 
+    def test_backend_factory_error_is_remediated(self, monkeypatch):
+        def factory() -> FakeBackend:
+            raise RuntimeError("no X")
+
+        adapter = DesktopAdapter("app", command="x", backend_factory=factory)
+        monkeypatch.setattr(sys, "platform", "linux")
+        with pytest.raises(DeviceConnectionError, match="no display") as info:
+            adapter.connect()
+        assert "DISPLAY" in (info.value.remediation or "")
+        assert adapter.is_available() is False
+
+    def test_backend_factory_connection_error_propagates_unchanged(self):
+        def factory() -> FakeBackend:
+            raise DeviceConnectionError("pyautogui is not installed", remediation="pip install")
+
+        adapter = DesktopAdapter("app", command="x", backend_factory=factory)
+        with pytest.raises(DeviceConnectionError) as info:
+            adapter.connect()
+        assert info.value.message == "pyautogui is not installed"
+        assert adapter.is_available() is False
+
     def test_macos_remediation_mentions_permissions(self, monkeypatch):
         backend = FakeBackend(fail_size=True)
         adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
@@ -199,6 +263,15 @@ class TestConnection:
         with pytest.raises(DeviceConnectionError) as info:
             adapter.connect()
         assert "Screen Recording" in (info.value.remediation or "")
+
+    def test_darwin_screenshot_probe_failure_is_connection_error(self, monkeypatch):
+        backend = FakeBackend(fail_screenshot=True)
+        adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)
+        monkeypatch.setattr(sys, "platform", "darwin")
+        with pytest.raises(DeviceConnectionError, match="screenshot probe failed"):
+            adapter.connect()
+        with pytest.raises(DeviceConnectionError, match="not connected"):
+            adapter._require_backend()
 
     def test_operations_before_connect_raise(self, adapter):
         with pytest.raises(DeviceConnectionError, match="not connected"):
@@ -248,6 +321,13 @@ class TestConfig:
 
     def test_from_config_rejects_bad_region(self):
         config = DeviceConfig.model_validate({"type": "desktop", "command": "x", "region": [1, 2]})
+        with pytest.raises(ConfigurationError, match="region"):
+            DesktopAdapter.from_config("app", config)
+
+    def test_from_config_rejects_non_numeric_region(self):
+        config = DeviceConfig.model_validate(
+            {"type": "desktop", "command": "x", "region": ["a", 0, 100, 100]}
+        )
         with pytest.raises(ConfigurationError, match="region"):
             DesktopAdapter.from_config("app", config)
 
@@ -340,6 +420,16 @@ class TestLifecycle:
             adapter.reset_application()
         assert not adapter.is_application_running()
 
+    def test_reset_command_failure_falls_back_to_stdout(self, backend):
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", _CHILD],
+            reset_command=f"{sys.executable} -c \"print('boom'); import sys; sys.exit(2)\"",
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        with pytest.raises(DeviceConnectionError, match="boom"):
+            adapter.reset_application()
+
     def test_reset_command_timeout_is_connection_error(self, backend, monkeypatch):
         monkeypatch.setattr("argus.adapters.desktop._RESET_TIMEOUT", 0.2)
         adapter = DesktopAdapter(
@@ -356,6 +446,28 @@ class TestLifecycle:
     def test_stop_when_not_running_is_noop(self, adapter):
         adapter.connect()
         adapter.stop_application()
+        assert not adapter.is_application_running()
+
+    def test_stop_application_failure_can_be_retried(self, adapter):
+        adapter.connect()
+        adapter.start_application()
+        process = adapter._process
+        original_stop = process.stop
+        calls = {"count": 0}
+
+        def flaky_stop(timeout: float) -> None:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("boom")
+            original_stop(timeout)
+
+        process.stop = flaky_stop
+        with pytest.raises(RuntimeError, match="boom"):
+            adapter.stop_application()
+        assert adapter._process is process  # not cleared: caller can retry
+
+        adapter.stop_application()  # retry succeeds
+        assert adapter._process is None
         assert not adapter.is_application_running()
 
     def test_disconnect_stops_running_app(self, adapter):
@@ -441,7 +553,7 @@ class TestGestures:
         adapter.swipe(0, 0, 100, 50, duration_ms=300)
         assert backend.calls[-3:] == [
             ("mouseDown", (0, 0)),
-            ("moveTo", (100, 50, 0.3)),
+            ("dragTo", (100, 50, 0.3, False)),
             ("mouseUp", ()),
         ]
         assert self.sleeps == []
@@ -457,7 +569,7 @@ class TestGestures:
         adapter.drag(1, 2, 3, 4, hold_ms=250, duration_ms=500)
         assert backend.calls[-3:] == [
             ("mouseDown", (1, 2)),
-            ("moveTo", (3, 4, 0.5)),
+            ("dragTo", (3, 4, 0.5, False)),
             ("mouseUp", ()),
         ]
         assert self.sleeps == [0.25]
@@ -494,6 +606,12 @@ class TestKeys:
         adapter.connect()
         adapter.press_key(key)
         assert backend.calls[-1] == expected
+
+    @pytest.mark.parametrize("key", ["VOLUME_UP", "escpae", "Ctrl+bogus"])
+    def test_press_key_rejects_unknown_pyautogui_names(self, adapter, key):
+        adapter.connect()
+        with pytest.raises(DeviceCapabilityError, match="not a pyautogui key name"):
+            adapter.press_key(key)
 
 
 class TestRegistry:
