@@ -155,6 +155,41 @@ def test_requests_are_serialised(link, transport):
     assert results == [b"{}", b"{}"]
 
 
+def test_late_reply_after_timeout_is_dropped_before_next_request(link, transport):
+    """A reply that arrives after we gave up must not satisfy the next same-cmd request."""
+    with pytest.raises(DeviceConnectionError, match="timed out"):
+        link.request("status")
+    transport.feed(frame("status", b"late"))
+    # Wait for the late reply to actually be parsed onto the internal queue - not
+    # merely handed to the fake transport - otherwise this test would itself race
+    # the reader thread the same way the bug it covers did.
+    assert _wait(lambda: link._responses.qsize() >= 1)
+
+    results: list[bytes] = []
+    worker = threading.Thread(target=lambda: results.append(link.request("status")))
+    worker.start()
+    # The second request's drain-then-write is synchronous and happens before it
+    # waits for a response; once its write lands, the stale "late" reply is gone
+    # and only a reply fed from here on can satisfy it.
+    assert _wait(lambda: len(transport.writes) == 2)
+    transport.feed(frame("status", b"fresh"))
+    worker.join(timeout=3)
+    assert results == [b"fresh"]
+
+
+def test_successful_request_does_not_drain_a_pre_queued_next_response(link, transport):
+    """After a successful request (nothing abandoned), the next request must not
+
+    discard a response already queued up for it.
+    """
+    transport.feed(frame("status", b"first"))
+    assert link.request("status") == b"first"
+
+    transport.feed(frame("status", b"second"))
+    assert _wait(lambda: link._responses.qsize() >= 1)
+    assert link.request("status") == b"second"
+
+
 def test_close_stops_reader(transport, logs):
     link = AgentLink(transport, log_sink=logs, timeout=0.2)
     link.start()

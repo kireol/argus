@@ -117,6 +117,17 @@ class AgentLink:
     # -- requests ------------------------------------------------------------------------
 
     def request(self, cmd: str, *args: str) -> bytes:
+        """Write ``cmd`` (with ``args``) and block until its matching response arrives.
+
+        Protocol limitation: the wire format has no per-request correlation id, only
+        a command name. `_abandoned` + `_drain()` (see ``__init__``) only cover the
+        immediate-next-request case: a reply that arrives after *this* call gives up
+        is discarded before the *very next* call starts waiting. A reply that arrives
+        even later - after an intervening, successful request of the same command has
+        already completed - is not covered and could still be misattributed to
+        whichever later request happens to ask for that same ``cmd``. Closing that gap
+        fully would require the firmware to echo back a request id, which it does not.
+        """
         line = " ".join((cmd, *args)).encode("utf-8")
         with self._request_lock:
             if self._abandoned:
