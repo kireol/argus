@@ -433,3 +433,45 @@ class DesktopAdapter(Device):
         if lines <= 0:
             return ""
         return "\n".join(list(self._logs)[-lines:])
+
+    # -- input --------------------------------------------------------------------------------
+
+    def _no_touch(self, operation: str) -> DeviceCapabilityError:
+        return DeviceCapabilityError(
+            f"Desktop device {self.name!r} cannot {operation}: desktop has no touch injection.",
+            remediation="Zoom with the keyboard instead, e.g. device.key: Ctrl+Plus "
+            "(Cmd+Plus on macOS).",
+        )
+
+    def tap(self, x: int, y: int) -> None:
+        backend = self._require_backend()
+        backend.click(*self._to_logical((x, y)))
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
+        backend = self._require_backend()
+        backend.mouseDown(*self._to_logical((x1, y1)))
+        backend.moveTo(*self._to_logical((x2, y2)), duration=duration_ms / 1000)
+        backend.mouseUp()
+
+    def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
+        backend = self._require_backend()
+        backend.mouseDown(*self._to_logical((x, y)))
+        time.sleep(duration_ms / 1000)
+        backend.mouseUp()
+
+    def drag(
+        self, x1: int, y1: int, x2: int, y2: int, hold_ms: int = 500, duration_ms: int = 500
+    ) -> None:
+        backend = self._require_backend()
+        backend.mouseDown(*self._to_logical((x1, y1)))
+        time.sleep(hold_ms / 1000)
+        backend.moveTo(*self._to_logical((x2, y2)), duration=duration_ms / 1000)
+        backend.mouseUp()
+
+    def multi_touch(self, fingers: Sequence[Sequence[Point]], duration_ms: int = 500) -> None:
+        raise self._no_touch("multi_touch")
+
+    def pinch(
+        self, cx: int, cy: int, start_distance: int, end_distance: int, duration_ms: int = 500
+    ) -> None:
+        raise self._no_touch("pinch")
