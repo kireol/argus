@@ -161,3 +161,52 @@ def test_from_config_reads_input_device():
     cfg = DeviceConfig(type="android", input_device="/dev/input/event9")
     adapter = AndroidAdapter.from_config("phone", cfg)
     assert adapter._input_device == "/dev/input/event9"
+
+
+# -- device selection on connect ------------------------------------------------------
+
+
+def _patch_devices(monkeypatch, devices: list[str]) -> None:
+    monkeypatch.setattr(
+        AndroidAdapter, "list_devices", staticmethod(lambda adb_path="adb", timeout=10.0: devices)
+    )
+    monkeypatch.delenv("ANDROID_SERIAL", raising=False)
+
+
+def test_connect_uses_single_device(monkeypatch) -> None:
+    _patch_devices(monkeypatch, ["emulator-5554"])
+    adapter = AndroidAdapter("phone")
+    adapter.connect()
+    assert adapter.serial == "emulator-5554"
+
+
+def test_connect_honours_android_serial_env(monkeypatch) -> None:
+    _patch_devices(monkeypatch, ["emulator-5554", "emulator-5556"])
+    monkeypatch.setenv("ANDROID_SERIAL", "emulator-5556")
+    adapter = AndroidAdapter("phone")
+    adapter.connect()
+    assert adapter.serial == "emulator-5556"
+
+
+def test_connect_prompts_when_multiple_devices_interactive(monkeypatch, capsys) -> None:
+    _patch_devices(monkeypatch, ["emulator-5554", "emulator-5556"])
+    monkeypatch.setattr("argus.adapters.android._interactive", lambda: True)
+    answers = iter(["x", "9", "2"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    adapter = AndroidAdapter("phone")
+    adapter.connect()
+    assert adapter.serial == "emulator-5556"
+    err = capsys.readouterr().err
+    assert "1. emulator-5554" in err
+    assert "2. emulator-5556" in err
+    assert "ANDROID_SERIAL=emulator-5554" in err
+
+
+def test_connect_multiple_devices_non_interactive_raises(monkeypatch) -> None:
+    from argus.exceptions import ConfigurationError
+
+    _patch_devices(monkeypatch, ["emulator-5554", "emulator-5556"])
+    monkeypatch.setattr("argus.adapters.android._interactive", lambda: False)
+    adapter = AndroidAdapter("phone")
+    with pytest.raises(ConfigurationError, match="ANDROID_SERIAL"):
+        adapter.connect()

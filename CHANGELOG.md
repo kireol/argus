@@ -7,6 +7,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Android: when no `serial` is configured and several devices/emulators are
+  connected, interactive runs list them with numbers and prompt for a choice
+  (with an `ANDROID_SERIAL` hint); `ANDROID_SERIAL` from the environment is
+  honoured; a single connected device is used automatically.
 - `desktop` device adapter (optional `argus[desktop]` extra, pyautogui): native
   applications on Windows, Linux and macOS — launch/stop/reset as a
   subprocess with stdout/stderr as logs, screenshots (optional `region` crop,
