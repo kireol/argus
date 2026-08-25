@@ -61,7 +61,12 @@ src/argus/
 ├── reporting/        console (event-driven), JSON, JUnit, HTML, alerts
 ├── events/           event model + synchronous EventBus
 ├── logging/          structured logging, secret redaction
-├── cli/              Typer CLI — a thin client of TestRunner
+├── service/          ArgusService facade, cached test catalog, background
+│                     RunRegistry (run ids, EventBus capture, device leases),
+│                     environment validation — shared by CLI, MCP, future GUI
+├── mcp/              Model Context Protocol server: tools, resources, prompts,
+│                     schemas, transports (stdio / Streamable HTTP), auth
+├── cli/              Typer CLI — a thin client of the service layer
 └── utilities/        duration parsing, variable expansion
 ```
 

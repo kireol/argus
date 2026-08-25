@@ -41,3 +41,14 @@ regions:
     y: 100
     width: 700
     height: 100
+
+# MCP server for AI clients (`argus mcp`; see docs/mcp.md). Optional dependency:
+# pip install "argus[mcp]". Flags such as --transport/--host/--port override these.
+# mcp:
+#   transport: stdio            # stdio | streamable-http
+#   host: 127.0.0.1
+#   port: 8000
+#   auth:
+#     tokens: ["${ARGUS_MCP_TOKEN}"]   # required to bind to a non-loopback host
+#   limits:
+#     max_concurrent_runs: 1

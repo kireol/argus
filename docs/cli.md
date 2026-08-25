@@ -14,6 +14,22 @@ under **Run options** (`--test`, `--feature`, `--tag`, `--platform`, `--all`,
 `--skip-preflight`, `--skip-to`, `--save-comparisons`). Those flags work as
 `argus run --feature movies` or `argus --feature movies run`.
 
+## argus mcp
+
+Serve Argus to AI clients over the Model Context Protocol (optional
+dependency: `pip install "argus[mcp]"`).
+
+```bash
+argus mcp                                        # stdio (Claude Code, IDEs)
+argus mcp --config config/fake.yaml
+argus mcp --transport streamable-http            # http://127.0.0.1:8000/mcp
+argus mcp --transport streamable-http --host 0.0.0.0 --port 8765 --path /argus/mcp
+```
+
+Flags override the `mcp:` configuration section. Over stdio nothing but the
+protocol is written to stdout (logs go to stderr). Exit code `2` for
+configuration errors or a missing SDK. See [mcp.md](mcp.md).
+
 ## argus run
 
 Run tests, filtered any way you like.

@@ -118,6 +118,27 @@ before_each: []              # optional host commands before every test (prepend
   # - name: reset SUT state
   #   command: scripts/reset-defaults.sh
   #   timeout: 60s
+
+mcp:                         # `argus mcp` (see mcp.md); flags override these
+  transport: stdio           # stdio | streamable-http
+  host: 127.0.0.1
+  port: 8000
+  path: /mcp
+  stateless_http: true
+  json_response: false
+  allowed_hosts: []          # extra Host values accepted over HTTP
+  allowed_origins: []
+  auth:
+    tokens: []               # ["${ARGUS_MCP_TOKEN}"] — required for non-loopback hosts
+  limits:
+    max_results: 50
+    max_artifact_bytes: 1000000
+    max_log_bytes: 32768
+    max_screenshot_dimension: 1280
+    max_concurrent_runs: 1
+    max_run_events: 2000
+    max_retained_runs: 100
+    max_wait: 10m
 ```
 
 ## Extends (config overlays)

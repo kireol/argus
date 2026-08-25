@@ -57,6 +57,34 @@ class TestFilter:
         return described
 
 
+def build_filter(
+    test_ids: list[str] | None = None,
+    features: list[str] | None = None,
+    tags: list[str] | None = None,
+    platforms: list[str] | None = None,
+    tag_expression: str | None = None,
+) -> TestFilter:
+    """Build a filter from user-supplied lists (CLI flags, MCP arguments).
+
+    A tag value that contains ``and`` / ``or`` / ``not`` is treated as a tag
+    expression, mirroring ``argus run --tag "smoke and not slow"``.
+    """
+    plain_tags: list[str] = []
+    expression = tag_expression
+    for value in tags or []:
+        if any(f" {op} " in f" {value} " for op in ("and", "or", "not")):
+            expression = value
+        else:
+            plain_tags.append(value)
+    return TestFilter(
+        test_ids=list(test_ids or []),
+        features=list(features or []),
+        tags=plain_tags,
+        platforms=list(platforms or []),
+        tag_expression=expression,
+    )
+
+
 class _ExpressionParser:
     """Recursive-descent parser for boolean tag expressions.
 
