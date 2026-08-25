@@ -271,3 +271,40 @@ class IosAdapter(Device):
         # WebDriverAgent cannot wipe app data; a cold relaunch is the closest reset.
         self.stop_application()
         self.start_application()
+
+    # -- observation -------------------------------------------------------------------------
+
+    def screenshot(self) -> Image:
+        payload = self._client.request("GET", "/screenshot")
+        encoded = payload.get("value") or ""
+        try:
+            data = base64.b64decode(encoded)
+            with PILImage.open(io.BytesIO(data)) as img:
+                return img.convert("RGB")
+        except (ValueError, OSError) as exc:
+            raise ScreenshotError(
+                f"WebDriverAgent screenshot is not a valid PNG ({len(encoded)} chars).",
+                remediation="Check the device is unlocked and WDA is attached to it.",
+            ) from exc
+
+    def _pixel_scale(self) -> float:
+        if self._scale is None:
+            screen = self._client.request("GET", self._session_path("/wda/screen"))
+            value = (screen.get("value") or {}).get("scale")
+            self._scale = float(value) if value else 1.0
+        return self._scale
+
+    def get_screen_info(self) -> ScreenInfo:
+        if self._screen_info is None:
+            size = self._client.request("GET", self._session_path("/window/size")).get("value")
+            size = size or {}
+            scale = self._pixel_scale()
+            self._screen_info = ScreenInfo(
+                width=round(float(size.get("width", 0)) * scale),
+                height=round(float(size.get("height", 0)) * scale),
+            )
+        return self._screen_info
+
+    def _to_points(self, point: Point) -> tuple[float, float]:
+        scale = self._pixel_scale()
+        return (point[0] / scale, point[1] / scale)
