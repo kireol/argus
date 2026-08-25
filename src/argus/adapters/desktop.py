@@ -138,3 +138,176 @@ class _ProcessHandle:
         # while that read is in flight would race with it.
         if not self._pump.is_alive() and self._process.stdout is not None:
             self._process.stdout.close()
+
+
+def _host_platform() -> str:
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "linux"
+
+
+def _display_remediation() -> str:
+    if sys.platform == "darwin":
+        return (
+            "Grant your terminal Screen Recording and Accessibility permission "
+            "(System Settings > Privacy & Security), then re-run."
+        )
+    if sys.platform == "win32":
+        return (
+            "Run from an interactive desktop session (not a service), "
+            "at the app's integrity level."
+        )
+    return (
+        "Desktop devices need an X11 display: set DISPLAY (or run under Xvfb / XWayland) "
+        "and install scrot + python3-tk for pyautogui."
+    )
+
+
+class DesktopAdapter(Device):
+    """Controls a native desktop application through pyautogui and a subprocess."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        command: str,
+        args: Sequence[str] = (),
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        startup_wait: float = 0.0,
+        stop_timeout: float = 5.0,
+        reset_command: str | None = None,
+        region: tuple[int, int, int, int] | None = None,
+        platform: str | None = None,
+        backend_factory: BackendFactory | None = None,
+    ) -> None:
+        super().__init__(name)
+        self._command = command
+        self._args = list(args)
+        self._cwd = cwd
+        self._env = dict(env) if env else None
+        self._startup_wait = float(startup_wait)
+        self._stop_timeout = float(stop_timeout)
+        self._reset_command = reset_command
+        self._region = region
+        self._platform = platform or _host_platform()
+        self._backend_factory: BackendFactory = backend_factory or _pyautogui_backend
+        self._backend: DesktopBackend | None = None
+        self._process: _ProcessHandle | None = None
+        self._logs: deque[str] = deque(maxlen=_MAX_LOG_LINES)
+        self._ratio: float | None = None
+        self._screen_info: ScreenInfo | None = None
+        self._log = get_logger("argus.desktop", device=name)
+
+    @classmethod
+    def from_config(cls, name: str, config: DeviceConfig) -> DesktopAdapter:
+        options: dict[str, Any] = config.options
+        command = options.get("command")
+        if not command:
+            raise ConfigurationError(
+                f"Desktop device {name!r} needs a command.",
+                remediation="Set devices.<name>.command to the application executable.",
+            )
+        region: tuple[int, int, int, int] | None = None
+        raw_region = options.get("region")
+        if raw_region is not None:
+            if not isinstance(raw_region, list | tuple) or len(raw_region) != 4:
+                raise ConfigurationError(
+                    f"Desktop device {name!r}: region must be [x, y, width, height].",
+                    remediation="Example: region: [0, 0, 1920, 1080]",
+                )
+            region = (
+                int(raw_region[0]),
+                int(raw_region[1]),
+                int(raw_region[2]),
+                int(raw_region[3]),
+            )
+        env = options.get("env")
+        return cls(
+            name,
+            command=str(command),
+            args=[str(a) for a in options.get("args", [])],
+            cwd=options.get("cwd"),
+            env={str(k): str(v) for k, v in env.items()} if env else None,
+            startup_wait=parse_duration(options.get("startup_wait", "0s")),
+            stop_timeout=parse_duration(options.get("stop_timeout", "5s")),
+            reset_command=options.get("reset_command"),
+            region=region,
+            platform=config.effective_platform if config.platform else None,
+        )
+
+    @property
+    def capabilities(self) -> DeviceCapabilities:
+        return DeviceCapabilities(
+            supports_screenshot=True,
+            supports_tap=True,
+            supports_swipe=True,
+            supports_long_press=True,
+            supports_drag=True,
+            supports_multi_touch=False,
+            supports_keyboard=True,
+            supports_app_lifecycle=True,
+            supports_logs=True,
+        )
+
+    @property
+    def platform(self) -> str:
+        return self._platform
+
+    # -- connection -------------------------------------------------------------------------
+
+    def _require_backend(self) -> DesktopBackend:
+        if self._backend is None:
+            raise DeviceConnectionError(
+                f"Desktop device {self.name!r} is not connected.",
+                remediation="Call connect() (RunSession does this automatically).",
+            )
+        return self._backend
+
+    def _probe(self) -> tuple[int, int]:
+        backend = self._backend_factory()
+        try:
+            width, height = backend.size()
+        except Exception as exc:  # noqa: BLE001 - pyautogui raises assorted backend errors
+            raise DeviceConnectionError(
+                f"Desktop device {self.name!r}: no display available ({exc}).",
+                remediation=_display_remediation(),
+            ) from exc
+        self._backend = backend
+        return int(width), int(height)
+
+    def connect(self) -> None:
+        self._probe()
+        self._ratio = None
+        self._screen_info = None
+
+    def disconnect(self) -> None:
+        if self._process is not None and self._process.running:
+            self.stop_application()
+        self._backend = None
+
+    def is_available(self) -> bool:
+        try:
+            self._probe()
+        except DeviceConnectionError:
+            return False
+        return True
+
+    def health_check(self) -> HealthCheckResult:
+        try:
+            width, height = self._probe()
+        except DeviceConnectionError as exc:
+            return HealthCheckResult.failed(str(exc))
+        return HealthCheckResult.ok(
+            "Desktop display available",
+            screen=f"{width}x{height}",
+            platform=self._platform,
+            app_running=self.is_application_running(),
+        )
+
+    # -- application lifecycle ----------------------------------------------------------
+
+    def is_application_running(self) -> bool:
+        return self._process is not None and self._process.running
