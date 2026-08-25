@@ -15,10 +15,19 @@ Usage::
 
 The agent shares the UART with normal ``print`` output; anything that is not
 an Argus command line is left alone (and passed to ``on_serial_line`` if set).
+
+``poll()`` is non-blocking. When ``uart`` exposes ``.any()`` (a real
+``machine.UART``), that is used to size each read. Objects without ``.any()``
+(e.g. ``sys.stdin.buffer`` in the REPL example above) are instead polled with
+``select.poll()``/``uselect.poll()`` for readability before each byte is read.
+If neither ``.any()`` nor ``select``/``uselect`` polling is available for the
+given object, the constructor raises ``TypeError`` immediately rather than
+letting ``poll()`` block later.
 """
 
 PREFIX = b"\x1b[ARGUS] "
 _FORMATS = ("MONO_HLSB", "MONO_HMSB", "MONO_VLSB", "GS8", "RGB565", "RGB565_BE", "RGB888")
+_MAX_LINE = 128  # matches the Arduino agent's kMaxLine
 
 
 def _json_value(value):
@@ -41,6 +50,28 @@ def _json_object(mapping):
     return "{" + ",".join(parts) + "}"
 
 
+def _make_poller(uart):
+    """Build a ``select``/``uselect`` poller registered for POLLIN on ``uart``.
+
+    Raises ``TypeError`` if neither module is importable or ``uart`` cannot be
+    registered (e.g. it exposes no ``fileno()``), so a caller finds out at
+    construction time rather than having ``poll()`` block forever later.
+    """
+    try:
+        import select
+    except ImportError:
+        try:
+            import uselect as select
+        except ImportError:
+            raise TypeError("uart must provide any() or be pollable")
+    try:
+        poller = select.poll()
+        poller.register(uart, select.POLLIN)
+    except Exception:
+        raise TypeError("uart must provide any() or be pollable")
+    return poller
+
+
 class ArgusAgent:
     def __init__(self, uart, buffer=None, width=0, height=0, fmt=None, name="app", version="1"):
         if fmt is not None and fmt not in _FORMATS:
@@ -52,11 +83,15 @@ class ArgusAgent:
         self._fmt = fmt
         self._name = name
         self._version = version
-        self._line = b""
+        self._line = bytearray()
         self._status = {}
         self._state = {}
         self.on_key = None
         self.on_serial_line = None
+        self._has_any = hasattr(uart, "any")
+        self._poller = None
+        if not self._has_any:
+            self._poller = _make_poller(uart)
 
     # -- public API ------------------------------------------------------------------
 
@@ -69,18 +104,25 @@ class ArgusAgent:
     def poll(self):
         """Service pending serial input. Call this often from the main loop."""
         while True:
-            pending = self._uart.any() if hasattr(self._uart, "any") else 1
-            if not pending:
-                return
-            data = self._uart.read(pending)
+            if self._has_any:
+                pending = self._uart.any()
+                if not pending:
+                    return
+                data = self._uart.read(pending)
+            else:
+                if not self._poller.poll(0):
+                    return
+                data = self._uart.read(1)
             if not data:
                 return
             for byte in data:
                 if byte == 10:  # "\n"
-                    self._handle_line(self._line)
-                    self._line = b""
+                    self._handle_line(bytes(self._line))
+                    self._line = bytearray()
+                elif len(self._line) < _MAX_LINE - 1:
+                    self._line.append(byte)
                 else:
-                    self._line += bytes([byte])
+                    self._line = bytearray()  # overlong line: discard
 
     # -- protocol --------------------------------------------------------------------
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import threading
 import time
 from collections import deque
@@ -163,3 +164,68 @@ def test_input_without_callback_is_error(world):
 
     with pytest.raises(DeviceConnectionError, match="no key handler"):
         link.request("input", "X")
+
+
+def test_overlong_line_is_discarded_without_blocking_later_commands(world):
+    """A run of bytes with no newline, well past the 128-byte line cap, must not wedge
+    the agent: it should discard the overflow and still answer the next real command."""
+    _agent, uart, _keys, link, _logs = world
+    with uart.lock:
+        # 300 bytes with no embedded newline - several times the internal line cap - then
+        # a newline to terminate that (discarded) overlong line before the next real request.
+        uart.inbound += b"x" * 300 + b"\n"
+    info = link.hello()
+    assert info.name == "demo"
+
+
+class _PipeUart:
+    """A UART-like object with no ``.any()``, backed by a real OS pipe so it can be
+    registered with ``select.poll()`` (the agent's fallback for such objects)."""
+
+    def __init__(self) -> None:
+        self.read_fd, self.write_fd = os.pipe()
+        self.written = b""
+
+    def fileno(self) -> int:
+        return self.read_fd
+
+    def read(self, n: int) -> bytes:
+        return os.read(self.read_fd, n)
+
+    def write(self, data: bytes) -> int:
+        self.written += bytes(data)
+        return len(data)
+
+    def send(self, data: bytes) -> None:
+        os.write(self.write_fd, data)
+
+    def close(self) -> None:
+        os.close(self.read_fd)
+        os.close(self.write_fd)
+
+
+def test_poll_without_any_falls_back_to_select_poll():
+    module = _load_agent_module()
+    uart = _PipeUart()
+    try:
+        agent = module.ArgusAgent(uart, name="pipe", version="9")
+        uart.send(b"\x1b[ARGUS] hello\n")
+        agent.poll()
+        assert b"hello ok" in uart.written
+        assert b"name=pipe version=9" in uart.written
+    finally:
+        uart.close()
+
+
+def test_uart_without_any_or_fileno_raises_type_error_at_construction():
+    module = _load_agent_module()
+
+    class NotPollable:
+        def read(self, n: int) -> bytes:
+            return b""
+
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+    with pytest.raises(TypeError, match=r"any\(\) or be pollable"):
+        module.ArgusAgent(NotPollable())
