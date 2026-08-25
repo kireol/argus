@@ -199,6 +199,12 @@ class TestConnection:
         with pytest.raises(DeviceConnectionError, match="not connected"):
             adapter._require_backend()
 
+    def test_probes_do_not_connect(self, adapter):
+        assert adapter.is_available() is True
+        assert adapter.health_check().healthy
+        with pytest.raises(DeviceConnectionError, match="not connected"):
+            adapter._require_backend()
+
 
 class TestConfig:
     def test_from_config(self, tmp_path):

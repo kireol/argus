@@ -266,7 +266,8 @@ class DesktopAdapter(Device):
             )
         return self._backend
 
-    def _probe(self) -> tuple[int, int]:
+    def _probe(self) -> tuple[DesktopBackend, tuple[int, int]]:
+        """Check the display is reachable WITHOUT mutating connection state."""
         backend = self._backend_factory()
         try:
             width, height = backend.size()
@@ -275,11 +276,11 @@ class DesktopAdapter(Device):
                 f"Desktop device {self.name!r}: no display available ({exc}).",
                 remediation=_display_remediation(),
             ) from exc
-        self._backend = backend
-        return int(width), int(height)
+        return backend, (int(width), int(height))
 
     def connect(self) -> None:
-        self._probe()
+        backend, _size = self._probe()
+        self._backend = backend
         self._ratio = None
         self._screen_info = None
 
@@ -297,7 +298,7 @@ class DesktopAdapter(Device):
 
     def health_check(self) -> HealthCheckResult:
         try:
-            width, height = self._probe()
+            _backend, (width, height) = self._probe()
         except DeviceConnectionError as exc:
             return HealthCheckResult.failed(str(exc))
         return HealthCheckResult.ok(
