@@ -239,9 +239,9 @@ log buffer and the cached pixel ratio.
 | `get_screen_info()` | screenshot size in pixels (respecting `region`); pixel ratio = screenshot width ÷ `size().width`, cached |
 | `get_logs(lines)` | last `lines` of the process output buffer |
 | `tap(x, y)` | `click(px(x), px(y))` |
-| `swipe(...)` | `mouseDown(from)` → `moveTo(to, duration)` → `mouseUp()` |
+| `swipe(...)` | `mouseDown(from)` → `dragTo(to, duration, mouseDownUp=False)` → `mouseUp()` |
 | `long_press(x, y, ms)` | `mouseDown` → `time.sleep(ms)` → `mouseUp` |
-| `drag(...)` | `mouseDown` → `sleep(hold)` → `moveTo(to, duration)` → `mouseUp` |
+| `drag(...)` | `mouseDown` → `sleep(hold)` → `dragTo(to, duration, mouseDownUp=False)` → `mouseUp` |
 | `multi_touch`, `pinch` | `DeviceCapabilityError`: "desktop has no touch injection; zoom with `device.key: Ctrl+Plus` / `Cmd+Plus`" |
 | `press_key(key)` | `Ctrl+Plus`-style chords → `hotkey(...)`; Android names mapped (`BACK`→`escape`, `ENTER`→`enter`, `DPAD_*`→arrow keys, `HOME`/`END`/`PAGE_UP`/…); single characters and pyautogui names pass through |
 

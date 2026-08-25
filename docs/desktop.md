@@ -15,20 +15,32 @@ input, and captures the process's stdout/stderr as device logs.
 | Screenshot | `pyautogui.screenshot()`, cropped to `region` if set |
 | Screen size | screenshot pixels; `scale` = screenshot width ÷ logical width (HiDPI) |
 | Tap | `click` |
-| Swipe | `mouseDown` → `moveTo(duration)` → `mouseUp` |
+| Swipe | `mouseDown` → `dragTo(duration, mouseDownUp=False)` → `mouseUp` |
 | Long press | `mouseDown` → hold → `mouseUp` |
-| Drag | `mouseDown` → hold → `moveTo(duration)` → `mouseUp` |
+| Drag | `mouseDown` → hold → `dragTo(duration, mouseDownUp=False)` → `mouseUp` |
 | Pinch / multi-touch | **unsupported** — no portable touch injection; zoom with `device.key: Ctrl+Plus` (`Cmd+Plus` on macOS) |
-| Keys | `press` for single keys (Android names map: `BACK` → `escape`, `DPAD_*` → arrows); `hotkey` for chords like `Ctrl+Shift+t` |
+| Keys | `press` for single keys (Android names map: `BACK` → `escape`, `DPAD_*` → arrows); `hotkey` for chords like `Ctrl+Shift+t`; an unknown pyautogui key name fails the step with `DeviceCapabilityError` instead of silently doing nothing |
 | Logs | process stdout + stderr |
 
 Coordinates in tests are **screenshot pixels** (inside `region` when set),
 as on every other adapter; the adapter converts to pyautogui's logical
-coordinates on HiDPI displays.
+coordinates on HiDPI displays. Screenshots and input target the machine's
+**primary display**; a multi-monitor setup should put the app under test on
+the primary one.
+
+`stop` (and the `terminate`/`kill` sequence it performs) only signals the
+process Argus launched directly. If `command` is a launcher script that
+spawns the real application as a child of its own, that child is not
+signalled — have the launcher `exec` the real app (replacing itself)
+instead of forking it.
 
 ## Prerequisites
 
 - `pip install "argus[desktop]"`.
+- The adapter sets `pyautogui.FAILSAFE = False`: pyautogui's usual "yank the
+  mouse to a screen corner to abort" panic button is disabled, since a real
+  gesture could cross a corner in passing. Keep another way to kill a
+  runaway run (Ctrl+C the Argus process, or your CI job's cancel button).
 - **Linux (Ubuntu):** an X11 session with `DISPLAY` set, and
   `sudo apt install scrot python3-tk python3-dev`. Wayland sessions must run
   Argus under XWayland or a virtual display (`xvfb-run argus run ...`).
@@ -37,6 +49,9 @@ coordinates on HiDPI displays.
   Recording, screenshots come back black and the adapter reports it.
 - **Windows:** nothing extra; run the terminal at the same integrity level
   as the app (an elevated app ignores input from a non-elevated terminal).
+  `command` is resolved by `CreateProcess` against the parent process's
+  directory and `PATH`, **not** against `cwd` — use an absolute path, or a
+  `${VAR}` placeholder that expands to one.
 
 ## Configuration
 
@@ -70,6 +85,10 @@ in tests; `platform:` selects which entry a run uses.
   key: Ctrl+Plus
 ```
 
+Chords accept these modifier aliases (case-insensitive): `ctrl` / `control`,
+`alt` / `option`, `shift`, `cmd` / `command` / `meta` (macOS), `win` /
+`super` (Windows/Linux).
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -80,4 +99,4 @@ in tests; `platform:` selects which entry a run uses.
 | input ignored (macOS) | grant Accessibility permission |
 | input ignored (Windows) | run the terminal with the same elevation as the app |
 | `region ... exceeds the screenshot` | the crop must lie inside the screen in **pixels**, not logical points |
-| `Application executable not found` | `command` is resolved relative to `cwd` (or the current directory) |
+| `Application executable not found` | `command` is resolved relative to `cwd` (or the current directory) (POSIX; on Windows use an absolute path) |
