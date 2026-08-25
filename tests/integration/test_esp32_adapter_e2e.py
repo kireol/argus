@@ -59,7 +59,12 @@ def _exercise(device: Esp32Adapter) -> None:
     img = device.screenshot()
     assert img.size == (128, 64)
     assert img.getpixel((123, 59)) == (255, 255, 255)  # marker block
-    assert img.getpixel((64, 40)) == (0, 0, 0)  # empty area between menu rows
+    # ssd1306_menu layout (see agents/esp32/examples/ssd1306_menu/src/main.cpp): title text
+    # spans rows 0-7, menu row 0 spans rows 20-27, menu row 1 spans rows 34-41, and the
+    # marker block occupies rows 56-63/cols 120-127. Rows 8-19 and 42-55 are blank at every
+    # column, so x=64 in either gap is a safe "definitely off" probe regardless of glyph ink.
+    assert img.getpixel((64, 12)) == (0, 0, 0)  # gap between title and first menu row
+    assert img.getpixel((64, 48)) == (0, 0, 0)  # gap between second menu row and marker block
     device.press_key("BTN_DOWN")
     assert _wait_for_log(device, "menu: selected=Settings")
     client = device.instrumentation_client()
