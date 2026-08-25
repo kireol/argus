@@ -122,3 +122,141 @@ def _decode(raw: bytes) -> dict[str, Any]:
             remediation="Check the url points at WebDriverAgent, not another service.",
         ) from exc
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+Spawner = Callable[[list[str]], Any]
+
+
+def _subprocess_spawner(argv: list[str]) -> Any:
+    return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+
+class IosAdapter(Device):
+    """Controls an iOS app through WebDriverAgent."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        bundle_id: str,
+        url: str = _DEFAULT_URL,
+        timeout: float = _DEFAULT_TIMEOUT,
+        log_command: str | None = None,
+        client_factory: WdaClientFactory | None = None,
+        spawner: Spawner | None = None,
+    ) -> None:
+        super().__init__(name)
+        self._bundle_id = bundle_id
+        self._url = url
+        self._timeout = float(timeout)
+        self._log_command = log_command
+        self._client: WdaClient = (
+            client_factory() if client_factory else _HttpWdaClient(url, self._timeout)
+        )
+        self._spawn: Spawner = spawner or _subprocess_spawner
+        self._session_id: str | None = None
+        self._scale: float | None = None
+        self._screen_info: ScreenInfo | None = None
+        self._logs: deque[str] = deque(maxlen=_MAX_LOG_LINES)
+        self._log_process: Any = None
+        self._log_pump: threading.Thread | None = None
+        self._log = get_logger("argus.ios", device=name)
+
+    @classmethod
+    def from_config(cls, name: str, config: DeviceConfig) -> IosAdapter:
+        options: dict[str, Any] = config.options
+        bundle_id = options.get("bundle_id")
+        if not bundle_id:
+            raise ConfigurationError(
+                f"iOS device {name!r} needs a bundle_id.",
+                remediation="Set devices.<name>.bundle_id (e.g. com.example.app).",
+            )
+        return cls(
+            name,
+            bundle_id=str(bundle_id),
+            url=str(options.get("url", _DEFAULT_URL)),
+            timeout=float(options.get("timeout", _DEFAULT_TIMEOUT)),
+            log_command=options.get("log_command"),
+        )
+
+    @property
+    def capabilities(self) -> DeviceCapabilities:
+        return DeviceCapabilities(
+            supports_screenshot=True,
+            supports_tap=True,
+            supports_swipe=True,
+            supports_long_press=True,
+            supports_drag=True,
+            supports_multi_touch=True,
+            supports_keyboard=True,
+            supports_app_lifecycle=True,
+            supports_logs=self._log_command is not None,
+        )
+
+    @property
+    def platform(self) -> str:
+        return "ios"
+
+    # -- session plumbing ---------------------------------------------------------------
+
+    def _require_session(self) -> str:
+        if self._session_id is None:
+            raise DeviceConnectionError(
+                f"iOS device {self.name!r} is not connected.",
+                remediation="Call connect() (RunSession does this automatically).",
+            )
+        return self._session_id
+
+    def _session_path(self, suffix: str) -> str:
+        return f"/session/{self._require_session()}{suffix}"
+
+    def _post(self, suffix: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._client.request("POST", self._session_path(suffix), body or {})
+
+    # -- connection -------------------------------------------------------------------------
+
+    def connect(self) -> None:
+        self._client.request("GET", "/status")
+        payload = self._client.request(
+            "POST",
+            "/session",
+            {"capabilities": {"alwaysMatch": {"bundleId": self._bundle_id}}},
+        )
+        session_id = payload.get("sessionId") or (payload.get("value") or {}).get("sessionId")
+        if not session_id:
+            raise DeviceConnectionError(
+                "WebDriverAgent did not return a session id.",
+                remediation=f"Check the WDA log; is the app installed? {_WDA_DOCS}",
+            )
+        self._session_id = str(session_id)
+        self._scale = None
+        self._screen_info = None
+
+    def disconnect(self) -> None:
+        session_id, self._session_id = self._session_id, None
+        if session_id is not None:
+            with contextlib.suppress(DeviceConnectionError):
+                self._client.request("DELETE", f"/session/{session_id}")
+
+    def is_available(self) -> bool:
+        try:
+            self._client.request("GET", "/status")
+        except DeviceConnectionError:
+            return False
+        return True
+
+    def health_check(self) -> HealthCheckResult:
+        try:
+            status = self._client.request("GET", "/status").get("value") or {}
+            details: dict[str, Any] = {"url": self._url, "wda_state": status.get("state")}
+            if self._session_id is not None:
+                details["app_running"] = self.is_application_running()
+        except DeviceConnectionError as exc:
+            return HealthCheckResult.failed(str(exc))
+        return HealthCheckResult.ok("WebDriverAgent responsive", **details)
+
+    # -- application lifecycle ----------------------------------------------------------
+
+    def is_application_running(self) -> bool:
+        state = self._post("/wda/apps/state", {"bundleId": self._bundle_id}).get("value")
+        return state == 4
