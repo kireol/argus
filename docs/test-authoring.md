@@ -66,6 +66,10 @@ IDs must be unique — duplicate IDs abort the run before any test executes.
 | `device.start` / `stop` / `restart` / `reset` | — | application lifecycle |
 | `device.tap` | `x`, `y` | tap the screen |
 | `device.swipe` | `from_x`, `from_y`, `to_x`, `to_y`, optional `duration` | swipe |
+| `device.long_press` | `x`, `y`, optional `duration` (default `1s`) | press and hold |
+| `device.drag` | `from_x`, `from_y`, `to_x`, `to_y`, optional `hold` (`500ms`), `duration` (`500ms`) | press, hold in place, then move (drag-and-drop / reorder) |
+| `device.pinch` | `x`, `y`, `from_distance`, `to_distance`, optional `duration` | two-finger pinch centred on `x`,`y`; distance growing = zoom in, shrinking = zoom out |
+| `device.multi_touch` | `fingers` (list of point lists), optional `duration` | arbitrary simultaneous finger paths |
 | `device.key` | `key` (e.g. `HOME`, `BACK`, `DPAD_UP`) | key press |
 | `wait_until` | `condition`, `timeout`, `poll_interval` | poll a condition — **the** synchronization tool |
 | `verify` | `condition` | evaluate once; fails the test if false |
@@ -75,6 +79,34 @@ IDs must be unique — duplicate IDs abort the run before any test executes.
 | `shell.run` | `command`, optional `args` (list), `timeout`, `cwd`, `expect_exit` | run a host command (simulators, helpers, etc.) |
 
 Every step may carry an optional `name:` used in reports.
+
+Gestures are only available where the device can produce them (see each
+adapter's page); an unsupported gesture fails the step with a clear
+`DeviceCapabilityError` rather than silently doing nothing. Example:
+
+```yaml
+steps:
+  - action: device.pinch          # zoom in on the map
+    x: 540
+    y: 960
+    from_distance: 200
+    to_distance: 600
+  - action: device.long_press     # open the context menu
+    x: 200
+    y: 300
+    duration: 1500ms
+  - action: device.drag           # reorder: hold, then move
+    from_x: 200
+    from_y: 300
+    to_x: 200
+    to_y: 900
+    hold: 600ms
+  - action: device.multi_touch    # two fingers rotating
+    duration: 800ms
+    fingers:
+      - [[400, 500], [500, 400], [600, 500]]
+      - [[600, 700], [500, 800], [400, 700]]
+```
 
 ## Conditions
 
