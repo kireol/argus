@@ -219,3 +219,89 @@ class TestObservation:
     def test_to_points_divides_by_scale(self, adapter, wda):
         adapter.connect()
         assert adapter._to_points((101, 20)) == (50.5, 10)
+
+
+def _sources(wda: FakeWda) -> list[dict[str, Any]]:
+    body = wda.body("POST", "/session/S1/actions")
+    assert body is not None
+    return body["actions"]
+
+
+class TestGestures:
+    def test_tap_is_move_down_up_in_points(self, adapter, wda):
+        adapter.connect()
+        adapter.tap(100, 40)
+        (finger,) = _sources(wda)
+        assert finger["type"] == "pointer"
+        assert finger["parameters"] == {"pointerType": "touch"}
+        assert finger["actions"] == [
+            {"type": "pointerMove", "duration": 0, "x": 50, "y": 20},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerUp", "button": 0},
+        ]
+        assert wda.paths()[-1] == "/session/S1/actions"
+        assert wda.calls[-1][0] == "DELETE"  # pointer state released
+
+    def test_swipe_moves_with_duration(self, adapter, wda):
+        adapter.connect()
+        adapter.swipe(0, 0, 200, 100, duration_ms=300)
+        (finger,) = _sources(wda)
+        assert finger["actions"] == [
+            {"type": "pointerMove", "duration": 0, "x": 0, "y": 0},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "duration": 300, "x": 100, "y": 50},
+            {"type": "pointerUp", "button": 0},
+        ]
+
+    def test_long_press_pauses(self, adapter, wda):
+        adapter.connect()
+        adapter.long_press(10, 10, duration_ms=1500)
+        (finger,) = _sources(wda)
+        assert finger["actions"][2] == {"type": "pause", "duration": 1500}
+        assert [a["type"] for a in finger["actions"]] == [
+            "pointerMove", "pointerDown", "pause", "pointerUp",
+        ]
+
+    def test_drag_holds_then_moves(self, adapter, wda):
+        adapter.connect()
+        adapter.drag(0, 0, 20, 20, hold_ms=600, duration_ms=250)
+        (finger,) = _sources(wda)
+        assert finger["actions"] == [
+            {"type": "pointerMove", "duration": 0, "x": 0, "y": 0},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pause", "duration": 600},
+            {"type": "pointerMove", "duration": 250, "x": 10, "y": 10},
+            {"type": "pointerUp", "button": 0},
+        ]
+
+    def test_multi_touch_one_source_per_finger_segment_durations(self, adapter, wda):
+        adapter.connect()
+        adapter.multi_touch([[(0, 0), (20, 0), (20, 20)], [(100, 100), (80, 80)]], 400)
+        first, second = _sources(wda)
+        assert first["id"] == "finger0" and second["id"] == "finger1"
+        assert first["actions"] == [
+            {"type": "pointerMove", "duration": 0, "x": 0, "y": 0},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "duration": 200, "x": 10, "y": 0},
+            {"type": "pointerMove", "duration": 200, "x": 10, "y": 10},
+            {"type": "pointerUp", "button": 0},
+        ]
+        assert second["actions"] == [
+            {"type": "pointerMove", "duration": 0, "x": 50, "y": 50},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "duration": 400, "x": 40, "y": 40},
+            {"type": "pointerUp", "button": 0},
+        ]
+
+    def test_pinch_produces_two_mirrored_fingers(self, adapter, wda):
+        adapter.connect()
+        adapter.pinch(200, 300, start_distance=100, end_distance=200, duration_ms=500)
+        left, right = _sources(wda)
+        assert left["actions"][0] == {"type": "pointerMove", "duration": 0, "x": 75, "y": 150}
+        assert left["actions"][2] == {"type": "pointerMove", "duration": 500, "x": 50, "y": 150}
+        assert right["actions"][0] == {"type": "pointerMove", "duration": 0, "x": 125, "y": 150}
+        assert right["actions"][2] == {"type": "pointerMove", "duration": 500, "x": 150, "y": 150}
+
+    def test_gesture_before_connect_raises(self, adapter):
+        with pytest.raises(DeviceConnectionError, match="not connected"):
+            adapter.tap(1, 1)
