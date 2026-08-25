@@ -37,6 +37,11 @@ void setup() {
 void loop() { argus.poll(); /* your code */ }
 ```
 
+`status`/`state` are only advertised in the agent's `hello` capabilities if at
+least one entry has been set *before* the host's first `hello` request — call
+`setStatus`/`setState` (or `set_status`/`set_state` in MicroPython) from
+`setup()`/before your main loop, as above, not only in response to events.
+
 | Library / buffer | Format |
 | --- | --- |
 | Adafruit_SSD1306 `getBuffer()`, u8g2 `getBufferPtr()` | `ARGUS_MONO_VLSB` |
@@ -72,6 +77,10 @@ devices:
     baud: 115200                    # raise to 921600 for TFT-sized framebuffers
     usb_cdc: false                  # true for C3/S3 boards on native USB
     firmware: build/firmware.bin    # optional: flashed with esptool on connect
+    firmware_offset: "0x10000"      # 0x10000 for an app-only image (default; PlatformIO/
+                                     # Arduino build), 0x0 for a merged image (esptool
+                                     # merge_bin, which already includes the bootloader
+                                     # and partition table)
     agent: true                     # false = logs only (no agent in the firmware)
     boot_timeout: 10                # seconds to wait for the agent after reset
     timeout: 5                      # per-request seconds

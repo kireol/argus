@@ -57,7 +57,7 @@ class Esp32Adapter(Device):
         usb_cdc: bool = False,
         project_dir: str | Path | None = None,
         firmware: str | Path | None = None,
-        firmware_offset: str = "0x0",
+        firmware_offset: str = "0x10000",
         agent: bool = True,
         boot_timeout: float = 10.0,
         timeout: float = 5.0,
@@ -115,6 +115,12 @@ class Esp32Adapter(Device):
                 remediation="Set devices.<name>.transport to 'serial' or 'wokwi'.",
             )
         colors = options.get("mono_colors", ["#ffffff", "#000000"])
+        if not (isinstance(colors, (list, tuple)) and len(colors) == 2):
+            raise ConfigurationError(
+                f"ESP32 device {name!r}: 'mono_colors' must be a 2-item list "
+                f"[foreground, background], got {colors!r}.",
+                remediation='Set devices.<name>.mono_colors: ["#ffffff", "#000000"].',
+            )
         return cls(
             name,
             transport=str(transport),
@@ -123,7 +129,7 @@ class Esp32Adapter(Device):
             usb_cdc=bool(options.get("usb_cdc", False)),
             project_dir=options.get("project_dir"),
             firmware=options.get("firmware"),
-            firmware_offset=str(options.get("firmware_offset", "0x0")),
+            firmware_offset=str(options.get("firmware_offset", "0x10000")),
             agent=bool(options.get("agent", True)),
             boot_timeout=float(options.get("boot_timeout", 10.0)),
             timeout=float(options.get("timeout", 5.0)),
@@ -233,15 +239,18 @@ class Esp32Adapter(Device):
             f"ESP32 device {self.name!r}: no Argus agent responded within "
             f"{self._boot_timeout}s ({last_error}).",
             remediation="Check the firmware links the Argus agent and calls argus.poll(), "
-            "the baud rate matches, or set agent: false for a logs-only device.",
+            "the baud rate matches, the firmware was flashed at the right firmware_offset "
+            "(0x10000 for an app-only image, 0x0 for a merged image), or set agent: false "
+            "for a logs-only device.",
         )
 
     def _boot(self) -> None:
         """Reset the board and (when an agent is expected) wait for its hello."""
-        assert self._transport is not None
+        assert self._transport is not None and self._link is not None
         self._logs.clear()
         self._info = None
         self._transport.reset()
+        self._link.reset_stream()
         if self._agent:
             self._info = self._wait_for_agent()
             self._log.info(
@@ -338,6 +347,12 @@ class Esp32Adapter(Device):
     # -- input ----------------------------------------------------------------------------
 
     def press_key(self, key: str) -> None:
+        if "\r" in key or "\n" in key:
+            raise ConfigurationError(
+                f"Key {key!r} contains a line break, which would inject extra "
+                "protocol frames onto the wire.",
+                remediation="Pass a single key name with no embedded newlines.",
+            )
         link = self._require_agent("input", "press_key")
         link.request("input", key)
 
