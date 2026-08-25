@@ -116,6 +116,36 @@ class FakeProcess:
         return self.returncode
 
 
+class FakeStubbornProcess:
+    """A process whose terminate() is ignored; only kill() actually stops it."""
+
+    def __init__(self, output: bytes) -> None:
+        r, w = os.pipe()
+        self._w = w
+        self.stdout = os.fdopen(r, "rb", buffering=0)
+        os.write(w, output)
+        self.stdin = io.BytesIO()
+        self.terminate_called = False
+        self.killed = False
+        self.returncode: int | None = None
+
+    def terminate(self) -> None:
+        self.terminate_called = True  # SIGTERM is ignored - the process keeps running
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+        os.close(self._w)
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.returncode is None:
+            raise TimeoutError("process did not exit in time")
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+
 class TestWokwiTransport:
     def test_spawns_cli_and_reads_output(self, tmp_path):
         spawned: list[list[str]] = []
@@ -163,3 +193,11 @@ class TestWokwiTransport:
         )
         assert t.read(10, timeout=0.05) == b""
         t.close()
+
+    def test_close_kills_process_when_terminate_is_ignored(self, tmp_path):
+        proc = FakeStubbornProcess(b"one\n")
+
+        t = WokwiTransport(tmp_path, spawn=lambda argv: proc, env={"WOKWI_CLI_TOKEN": "wok_x"})
+        t.close()
+        assert proc.terminate_called
+        assert proc.killed

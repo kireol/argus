@@ -204,6 +204,12 @@ class WokwiTransport:
             process.terminate()
         with contextlib.suppress(Exception):
             process.wait(timeout=5)
+        if process.poll() is None:
+            # Some processes ignore SIGTERM; escalate rather than leak a live child.
+            with contextlib.suppress(Exception):
+                process.kill()
+            with contextlib.suppress(Exception):
+                process.wait(timeout=2)
         reader, self._reader = self._reader, None
         if reader is not None:
             reader.join(timeout=2)
