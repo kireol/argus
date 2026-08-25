@@ -22,6 +22,9 @@ _CONTEXT_FIELDS = (
     "platform",
     "device",
     "action",
+    "run_id",
+    "operation",
+    "tool",
 )
 
 _SECRET_PATTERNS = [

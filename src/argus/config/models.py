@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from argus.models.common import Region
 from argus.utilities.duration import parse_duration
@@ -227,6 +227,75 @@ class PreflightConfig(BaseModel):
     services: list[PreflightTcpService] = Field(default_factory=list)
 
 
+class MCPAuthConfig(BaseModel):
+    """Authentication for the Streamable HTTP transport.
+
+    ``tokens`` are static bearer tokens (reference them as ``${ENV_VAR}``).
+    Binding to a non-loopback host without tokens is refused.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tokens: list[str] = Field(default_factory=list)
+
+    @property
+    def configured_tokens(self) -> list[str]:
+        """Tokens that resolved to a real value (unresolved ``${...}`` are ignored)."""
+        return [t for t in self.tokens if t and "${" not in t]
+
+
+class MCPLimitsConfig(BaseModel):
+    """Response-size and concurrency safeguards for the MCP server."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_results: int = Field(default=50, ge=1, le=1000)
+    max_artifact_bytes: int = Field(default=1_000_000, ge=1024)
+    max_log_bytes: int = Field(default=32_768, ge=256)
+    max_screenshot_dimension: int = Field(default=1280, ge=64, le=8192)
+    max_concurrent_runs: int = Field(default=1, ge=1, le=64)
+    max_run_events: int = Field(default=2000, ge=50)
+    max_retained_runs: int = Field(default=100, ge=1)
+    # Longest a run_test/run_tests call may block waiting for completion.
+    max_wait: str | float = "10m"
+
+    @property
+    def max_wait_seconds(self) -> float:
+        return parse_duration(self.max_wait)
+
+
+class MCPConfig(BaseModel):
+    """Model Context Protocol server settings (``argus mcp``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    transport: str = "stdio"  # "stdio" | "streamable-http"
+    host: str = "127.0.0.1"
+    port: int = Field(default=8000, ge=1, le=65535)
+    path: str = "/mcp"
+    # Stateless HTTP lets replicas sit behind a load balancer (no session affinity).
+    stateless_http: bool = True
+    json_response: bool = False
+    allowed_hosts: list[str] = Field(default_factory=list)
+    allowed_origins: list[str] = Field(default_factory=list)
+    auth: MCPAuthConfig = Field(default_factory=MCPAuthConfig)
+    limits: MCPLimitsConfig = Field(default_factory=MCPLimitsConfig)
+
+    @field_validator("transport")
+    @classmethod
+    def _known_transport(cls, value: str) -> str:
+        if value not in ("stdio", "streamable-http"):
+            raise ValueError("mcp.transport must be 'stdio' or 'streamable-http'")
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def _path_shape(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("mcp.path must start with '/'")
+        return value.rstrip("/") or "/"
+
+
 class AppConfig(BaseModel):
     """Root configuration object."""
 
@@ -241,6 +310,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wait: WaitConfig = Field(default_factory=WaitConfig)
     preflight: PreflightConfig = Field(default_factory=PreflightConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
     test_paths: list[str] = Field(default_factory=lambda: ["test_suites"])
     asset_paths: list[str] = Field(default_factory=lambda: ["assets/images"])
     variables: dict[str, Any] = Field(default_factory=dict)

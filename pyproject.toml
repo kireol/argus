@@ -42,6 +42,7 @@ browser = ["playwright>=1.45"]
 desktop = ["pyautogui>=0.9.54"]
 appletv = ["pyatv>=0.14"]
 esp32 = ["pyserial>=3.5", "esptool>=4.7,<6"]
+mcp = ["mcp>=2.1"]
 dev = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
@@ -51,8 +52,9 @@ dev = [
     "pytest-httpserver>=1.0",
     "types-PyYAML",
     "types-paramiko",
+    "mcp>=2.1",
 ]
-all = ["argus[yocto,ocr,browser,desktop,appletv,esp32]"]
+all = ["argus[yocto,ocr,browser,desktop,appletv,esp32,mcp]"]
 
 [project.scripts]
 argus = "argus.cli.main:app"
