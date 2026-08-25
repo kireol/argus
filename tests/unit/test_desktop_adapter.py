@@ -468,3 +468,25 @@ class TestGestures:
             adapter.multi_touch([[(0, 0), (1, 1)]])
         with pytest.raises(DeviceCapabilityError, match="Ctrl\\+Plus"):
             adapter.pinch(100, 100, 50, 100)
+
+
+class TestKeys:
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            ("ENTER", ("press", ("enter",))),
+            ("KEYCODE_BACK", ("press", ("escape",))),
+            ("DPAD_LEFT", ("press", ("left",))),
+            ("PAGE_DOWN", ("press", ("pagedown",))),
+            ("HOME", ("press", ("home",))),
+            ("a", ("press", ("a",))),
+            ("f5", ("press", ("f5",))),
+            ("Ctrl+Plus", ("hotkey", ("ctrl", "+"))),
+            ("Cmd+Shift+t", ("hotkey", ("command", "shift", "t"))),
+            ("ctrl+alt+delete", ("hotkey", ("ctrl", "alt", "delete"))),
+        ],
+    )
+    def test_press_key_mapping(self, adapter, backend, key, expected):
+        adapter.connect()
+        adapter.press_key(key)
+        assert backend.calls[-1] == expected
