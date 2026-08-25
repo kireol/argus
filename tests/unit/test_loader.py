@@ -106,3 +106,67 @@ def test_empty_file_ignored(tmp_path):
 
 def test_nonexistent_path_yields_nothing(tmp_path):
     assert load_tests([tmp_path / "nope"]) == []
+
+
+# -- feature-level setup/teardown ----------------------------------------------------
+
+FEATURE_SUITE = """
+features:
+  Movies:
+    setup:
+      - action: log
+        message: feature setup
+    teardown:
+      - action: log
+        message: feature teardown
+tests:
+  - id: M-001
+    name: One
+    feature: movies
+    steps:
+      - action: log
+        message: one
+"""
+
+
+def test_load_suite_returns_features(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "movies.yaml", FEATURE_SUITE)
+    suite = load_suite([tmp_path])
+    assert [t.id for t in suite.tests] == ["M-001"]
+    feature = suite.feature_for("MOVIES")  # case-insensitive lookup
+    assert feature is not None
+    assert [s.action for s in feature.setup] == ["log"]
+    assert [s.action for s in feature.teardown] == ["log"]
+    assert suite.feature_for("Other") is None
+
+
+def test_load_tests_ignores_features_block(tmp_path):
+    write(tmp_path, "movies.yaml", FEATURE_SUITE)
+    assert [t.id for t in load_tests([tmp_path])] == ["M-001"]
+
+
+def test_duplicate_feature_definition_rejected(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "a.yaml", FEATURE_SUITE)
+    write(tmp_path, "b.yaml", FEATURE_SUITE.replace("M-001", "M-002"))
+    with pytest.raises(TestDefinitionError, match="Duplicate feature"):
+        load_suite([tmp_path])
+
+
+def test_invalid_feature_step_rejected(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "a.yaml", "features:\n  Movies:\n    setup:\n      - message: x\n")
+    with pytest.raises(TestDefinitionError, match="Invalid feature definition 'Movies'"):
+        load_suite([tmp_path])
+
+
+def test_features_must_be_mapping(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "a.yaml", "features: [1]\n")
+    with pytest.raises(TestDefinitionError, match="'features' must be a mapping"):
+        load_suite([tmp_path])
