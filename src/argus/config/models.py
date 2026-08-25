@@ -51,13 +51,14 @@ class BackendConfig(BaseModel):
 class InstrumentationConfig(BaseModel):
     """HTTP instrumentation endpoint for one application/device.
 
-    ``type: fake`` swaps in the in-memory FakeInstrumentation, seeded with
-    ``status``/``state`` (development/demos).
+    ``type: fake`` swaps in the in-memory FakeInstrumentation ...; ``type: device``
+    asks the device adapter for a client (e.g. the ESP32 agent's status/state over
+    serial).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    type: str = "http"  # "http" | "fake"
+    type: str = "http"  # "http" | "fake" | "device"
     status: dict[str, Any] = Field(default_factory=dict)
     state: dict[str, Any] = Field(default_factory=dict)
     base_url: str | None = None
