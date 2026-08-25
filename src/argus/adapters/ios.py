@@ -260,3 +260,14 @@ class IosAdapter(Device):
     def is_application_running(self) -> bool:
         state = self._post("/wda/apps/state", {"bundleId": self._bundle_id}).get("value")
         return state == 4
+
+    def start_application(self) -> None:
+        self._post("/wda/apps/launch", {"bundleId": self._bundle_id})
+
+    def stop_application(self) -> None:
+        self._post("/wda/apps/terminate", {"bundleId": self._bundle_id})
+
+    def reset_application(self) -> None:
+        # WebDriverAgent cannot wipe app data; a cold relaunch is the closest reset.
+        self.stop_application()
+        self.start_application()
