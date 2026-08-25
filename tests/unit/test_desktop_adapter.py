@@ -67,3 +67,13 @@ class TestProcessHandle:
     def test_missing_executable_is_connection_error(self):
         with pytest.raises(DeviceConnectionError, match="not found"):
             _ProcessHandle(["/definitely/not/a/binary"], cwd=None, env=None, sink=deque())
+
+    def test_stop_after_child_exits_on_its_own(self):
+        sink: deque[str] = deque(maxlen=100)
+        handle = _ProcessHandle(
+            [sys.executable, "-c", "print('bye', flush=True)"], cwd=None, env=None, sink=sink
+        )
+        assert _wait_for(lambda: not handle.running)
+        handle.stop(timeout=1.0)
+        handle.stop(timeout=1.0)
+        assert "bye" in sink
