@@ -80,8 +80,10 @@ IDs must be unique — duplicate IDs abort the run before any test executes.
 
 Every step may carry an optional `name:` used in reports.
 
-Gestures are only available where the device can produce them (see each
-adapter's page); an unsupported gesture fails the step with a clear
+Gestures are only available where the device can produce them: pinch and
+multi-touch work on Android, iOS and chromium browsers; long press and drag
+additionally on the browser adapter (mouse-driven); TV platforms have no touch input
+(see each adapter's page); an unsupported gesture fails the step with a clear
 `DeviceCapabilityError` rather than silently doing nothing. Example:
 
 ```yaml
