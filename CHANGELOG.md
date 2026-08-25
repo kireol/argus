@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Android: every adb command now targets the resolved serial (`adb -s`), so
+  commands issued before `connect()` can no longer hit "more than one
+  device/emulator"; `is_application_running` treats `pidof`'s non-zero exit
+  as "not running" instead of raising a connection error.
+
 ### Added
 - Android: when no `serial` is configured and several devices/emulators are
   connected, interactive runs list them with numbers and prompt for a choice
