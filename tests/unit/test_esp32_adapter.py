@@ -35,6 +35,10 @@ class ScriptedTransport:
             "screenshot": bytes([0b10000000, 0b00000001]),
             "input": b"",
         }
+        # Raw, unframed bytes to emit instead of a well-formed frame() response - lets a
+        # test simulate a malformed/incomplete reply (e.g. a header claiming a payload
+        # that never arrives) for one command, taking precedence over `answers`.
+        self.raw_answers: dict[str, bytes] = {}
         self.errors: dict[str, str] = {}
         self.writes: list[bytes] = []
         self.resets = 0
@@ -63,6 +67,8 @@ class ScriptedTransport:
         cmd, _, _args = data[len(PREFIX):].rstrip(b"\n").decode().partition(" ")
         if cmd in self.errors:
             self._emit(PREFIX + f"{cmd} err {self.errors[cmd]}\n".encode())
+        elif cmd in self.raw_answers:
+            self._emit(self.raw_answers[cmd])
         elif cmd == "hello":
             if self.hello is not None:
                 self._emit(frame("hello", self.hello))
@@ -195,6 +201,19 @@ class TestLifecycle:
         with pytest.raises(DeviceCapabilityError, match="stop_application"):
             adapter.stop_application()
 
+    def test_reset_recovers_from_mid_payload_timeout(self, adapter, transport):
+        """A screenshot answered with a header claiming a huge length (and no payload)
+        times out; a subsequent reset must clear that stale state so the next
+        screenshot, answered normally, succeeds rather than itself timing out."""
+        adapter.connect()
+        transport.raw_answers["screenshot"] = PREFIX + b"screenshot ok 999999\n"
+        with pytest.raises(DeviceConnectionError, match="timed out"):
+            adapter.screenshot()
+        del transport.raw_answers["screenshot"]
+        adapter.reset_application()
+        img = adapter.screenshot()
+        assert img.size == (8, 2)
+
     def test_disconnect_closes_transport(self, adapter, transport):
         adapter.connect()
         adapter.disconnect()
@@ -277,6 +296,17 @@ class TestInput:
             device.press_key("BTN_OK")
         device.disconnect()
 
+    def test_press_key_rejects_embedded_newline(self, adapter, transport):
+        adapter.connect()
+        with pytest.raises(ConfigurationError, match="line break"):
+            adapter.press_key("BTN_OK\nESC[ARGUS] input BTN_EVIL")
+        assert transport.writes[-1] == PREFIX + b"hello\n"  # no injected request was sent
+
+    def test_press_key_rejects_embedded_carriage_return(self, adapter, transport):
+        adapter.connect()
+        with pytest.raises(ConfigurationError, match="line break"):
+            adapter.press_key("BTN_OK\r")
+
     def test_tap_swipe_unsupported(self, adapter):
         with pytest.raises(DeviceCapabilityError):
             adapter.tap(1, 1)
@@ -303,6 +333,23 @@ class TestFlash:
             ["esptool", "--port", "/dev/ttyUSB0", "--baud", "460800", "write_flash",
              "0x10000", str(binary)]
         ]
+        device.disconnect()
+
+    def test_firmware_offset_defaults_to_app_image_offset(self, transport, tmp_path):
+        binary = tmp_path / "fw.bin"
+        binary.write_bytes(b"\xe9")
+        calls: list[list[str]] = []
+
+        def runner(argv):
+            calls.append(argv)
+            return 0
+
+        device = Esp32Adapter(
+            "board", transport="serial", port="/dev/ttyUSB0", firmware=binary,
+            transport_factory=lambda: transport, runner=runner,
+        )
+        device.connect()
+        assert calls[0][-2] == "0x10000"
         device.disconnect()
 
     def test_flash_failure(self, transport, tmp_path):
@@ -349,6 +396,22 @@ class TestConfig:
         assert device._usb_cdc is True and device._agent is False
         assert device._boot_timeout == 3.0 and device._timeout == 2.0
         assert device._mono_colors == ("#ff0000", "#000000")
+
+    def test_from_config_firmware_offset_defaults_to_app_image_offset(self):
+        config = DeviceConfig.model_validate(
+            {"type": "esp32", "transport": "serial", "port": "/dev/ttyUSB0"}
+        )
+        device = Esp32Adapter.from_config("board", config)
+        assert device._firmware_offset == "0x10000"
+
+    @pytest.mark.parametrize("colors", [["#ffffff"], ["#fff", "#000", "#f00"], "#ffffff", None])
+    def test_from_config_rejects_invalid_mono_colors(self, colors):
+        config = DeviceConfig.model_validate(
+            {"type": "esp32", "transport": "serial", "port": "/dev/ttyUSB0",
+             "mono_colors": colors}
+        )
+        with pytest.raises(ConfigurationError, match="mono_colors"):
+            Esp32Adapter.from_config("board", config)
 
     def test_from_config_wokwi(self, tmp_path):
         config = DeviceConfig.model_validate(

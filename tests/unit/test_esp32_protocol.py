@@ -190,6 +190,55 @@ def test_successful_request_does_not_drain_a_pre_queued_next_response(link, tran
     assert link.request("status") == b"second"
 
 
+def test_reset_stream_recovers_from_mid_payload_reset(link, transport, logs):
+    """A request left mid-payload across a board reset must not swallow the fresh boot
+    stream: reset_stream() must discard the reader's stale buffer/pending."""
+    transport.feed(PREFIX + b"screenshot ok 1024\n" + b"only a few bytes")
+    # Wait for the reader to actually consume that chunk (establishing pending state
+    # for a 1024-byte payload it will never fully receive) before resetting - otherwise
+    # this test would not exercise the mid-payload case at all.
+    assert _wait(lambda: not transport.script)
+    link.reset_stream()
+    transport.feed(b"fresh boot line\n", frame("hello", b"name=fresh version=2 fb=none caps="))
+    info = link.hello()
+    assert info.name == "fresh" and info.version == "2"
+    assert _wait(lambda: "fresh boot line" in logs)
+
+
+def test_reset_stream_drains_stale_queued_response(link, transport):
+    """A reply already sitting in `_responses` when reset happens must not satisfy a
+    request issued after the reset."""
+    transport.feed(frame("status", b"stale"))
+    assert _wait(lambda: link._responses.qsize() >= 1)
+    link.reset_stream()
+    transport.feed(frame("status", b"fresh"))
+    assert link.request("status") == b"fresh"
+
+
+def test_negative_payload_length_is_rejected(link, transport):
+    transport.feed(PREFIX + b"screenshot ok -5\n")
+    with pytest.raises(DeviceConnectionError, match="out of range"):
+        link.request("screenshot")
+
+
+def test_absurd_payload_length_is_rejected(link, transport):
+    transport.feed(PREFIX + b"screenshot ok 999999999\n")
+    with pytest.raises(DeviceConnectionError, match="out of range"):
+        link.request("screenshot")
+
+
+def test_request_rejects_arg_with_embedded_newline(link, transport):
+    with pytest.raises(DeviceConnectionError, match="line break"):
+        link.request("input", "BTN_OK\nEXTRA")
+    assert transport.writes == []
+
+
+def test_request_rejects_cmd_with_embedded_carriage_return(link, transport):
+    with pytest.raises(DeviceConnectionError, match="line break"):
+        link.request("do\rthing")
+    assert transport.writes == []
+
+
 def test_close_stops_reader(transport, logs):
     link = AgentLink(transport, log_sink=logs, timeout=0.2)
     link.start()
