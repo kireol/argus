@@ -245,3 +245,95 @@ class TestConfig:
         config = DeviceConfig.model_validate({"type": "desktop", "command": "x", "region": [1, 2]})
         with pytest.raises(ConfigurationError, match="region"):
             DesktopAdapter.from_config("app", config)
+
+
+class TestLifecycle:
+    def test_start_captures_logs_and_stop_terminates(self, adapter):
+        adapter.connect()
+        adapter.start_application()
+        try:
+            assert adapter.is_application_running()
+            assert _wait_for(lambda: "warning: something" in adapter.get_logs())
+            assert adapter.get_logs(1) == "warning: something"
+            assert adapter.get_logs(0) == ""
+        finally:
+            adapter.stop_application()
+        assert not adapter.is_application_running()
+
+    def test_start_clears_previous_logs_and_waits(self, backend, monkeypatch):
+        sleeps: list[float] = []
+        monkeypatch.setattr("argus.adapters.desktop.time.sleep", sleeps.append)
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", _CHILD], startup_wait=1.5,
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        adapter._logs.append("stale")
+        adapter.start_application()
+        try:
+            assert "stale" not in adapter.get_logs()
+            assert sleeps == [1.5]
+        finally:
+            adapter.stop_application()
+
+    def test_start_twice_restarts(self, adapter):
+        adapter.connect()
+        adapter.start_application()
+        first = adapter._process.pid
+        adapter.start_application()
+        try:
+            assert adapter._process.pid != first
+        finally:
+            adapter.stop_application()
+
+    def test_env_merges_over_os_environ(self, backend, monkeypatch):
+        monkeypatch.setenv("ARGUS_BASE", "base")
+        script = "import os; print(os.environ['ARGUS_BASE'], os.environ['ARGUS_EXTRA'], flush=True)"
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", script], env={"ARGUS_EXTRA": "extra"},
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        adapter.start_application()
+        assert _wait_for(lambda: "base extra" in adapter.get_logs())
+        adapter.stop_application()
+
+    def test_reset_runs_reset_command_between_stop_and_start(self, backend, tmp_path):
+        marker = tmp_path / "reset.txt"
+        reset = f"{sys.executable} -c \"open(r'{marker}', 'w').write('x')\""
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", _CHILD], reset_command=reset,
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        adapter.start_application()
+        first = adapter._process.pid
+        adapter.reset_application()
+        try:
+            assert marker.exists()
+            assert adapter._process.pid != first
+            assert adapter.is_application_running()
+        finally:
+            adapter.stop_application()
+
+    def test_reset_command_failure_is_connection_error(self, backend):
+        adapter = DesktopAdapter(
+            "app", command=sys.executable, args=["-c", _CHILD],
+            reset_command=f"{sys.executable} -c \"import sys; sys.exit(3)\"",
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        with pytest.raises(DeviceConnectionError, match="exit 3"):
+            adapter.reset_application()
+        assert not adapter.is_application_running()
+
+    def test_stop_when_not_running_is_noop(self, adapter):
+        adapter.connect()
+        adapter.stop_application()
+        assert not adapter.is_application_running()
+
+    def test_disconnect_stops_running_app(self, adapter):
+        adapter.connect()
+        adapter.start_application()
+        adapter.disconnect()
+        assert not adapter.is_application_running()

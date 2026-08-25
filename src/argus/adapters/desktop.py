@@ -312,3 +312,47 @@ class DesktopAdapter(Device):
 
     def is_application_running(self) -> bool:
         return self._process is not None and self._process.running
+
+    def start_application(self) -> None:
+        self._require_backend()
+        if self._process is not None and self._process.running:
+            self.stop_application()
+        env = {**os.environ, **self._env} if self._env else None
+        self._logs.clear()
+        self._process = _ProcessHandle(
+            [self._command, *self._args], cwd=self._cwd, env=env, sink=self._logs
+        )
+        self._log.info("Launched %s (pid %d)", self._command, self._process.pid)
+        if self._startup_wait > 0:
+            time.sleep(self._startup_wait)
+
+    def stop_application(self) -> None:
+        process, self._process = self._process, None
+        if process is not None:
+            process.stop(timeout=self._stop_timeout)
+
+    def reset_application(self) -> None:
+        self.stop_application()
+        if self._reset_command:
+            completed = subprocess.run(
+                self._reset_command,
+                shell=True,
+                cwd=self._cwd,
+                capture_output=True,
+                timeout=max(self._stop_timeout, 30.0),
+                check=False,
+            )
+            if completed.returncode != 0:
+                stderr = completed.stderr.decode(errors="replace").strip()
+                raise DeviceConnectionError(
+                    f"reset_command failed (exit {completed.returncode}): {stderr}",
+                    remediation="Check devices.<name>.reset_command runs cleanly by hand.",
+                )
+        self.start_application()
+
+    # -- observation -------------------------------------------------------------------------
+
+    def get_logs(self, lines: int = 200) -> str:
+        if lines <= 0:
+            return ""
+        return "\n".join(list(self._logs)[-lines:])
