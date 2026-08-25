@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from PIL.Image import Image
 
 from argus.exceptions import DeviceCapabilityError
 from argus.models.common import HealthCheckResult, PlaybackState, ScreenInfo
+
+if TYPE_CHECKING:
+    from argus.instrumentation.client import InstrumentationClient
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,12 @@ class Device(ABC):
     def get_playback_state(self) -> PlaybackState:
         """Current media playback state (devices with supports_playback_state)."""
         raise self._unsupported("get_playback_state")
+
+    # -- instrumentation --------------------------------------------------------------
+
+    def instrumentation_client(self) -> InstrumentationClient | None:
+        """Instrumentation served by the device itself (``instrumentation: {type: device}``)."""
+        return None
 
     # -- input ----------------------------------------------------------------------
 
