@@ -41,6 +41,7 @@ void loop() { argus.poll(); /* your code */ }
 | --- | --- |
 | Adafruit_SSD1306 `getBuffer()`, u8g2 `getBufferPtr()` | `ARGUS_MONO_VLSB` |
 | Adafruit `GFXcanvas1::getBuffer()` | `ARGUS_MONO_HLSB` |
+| MicroPython `framebuf.MONO_HMSB` buffers | `ARGUS_MONO_HMSB` (row-major 1-bpp, bit 0 = leftmost) |
 | Adafruit `GFXcanvas8` | `ARGUS_GS8` |
 | Adafruit `GFXcanvas16`, LVGL 16-bit draw buffer | `ARGUS_RGB565` (`ARGUS_RGB565_BE` after `setSwapBytes(true)` in TFT_eSPI sprites) |
 | 24-bit buffers | `ARGUS_RGB888` |
