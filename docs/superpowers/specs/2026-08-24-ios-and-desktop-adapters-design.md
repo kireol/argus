@@ -39,7 +39,7 @@ each with its own implementation plan and pull request.
 | --- | --- | --- |
 | iOS touch driver | **WebDriverAgent (WDA) over HTTP** | `xcrun simctl` has no touch injection at all; `idb` is simulator-only and single-finger. WDA's W3C Actions endpoint supports true multi-finger sequences, so pinch works, and the same HTTP API serves simulators and physical devices. |
 | iOS HTTP client | **`urllib.request`, no new dependency** | A handful of JSON endpoints; `requests` is not worth an extra install for this. |
-| iOS coordinates | **Tests use screenshot pixels; adapter converts to WDA points** | Consistent with every other adapter (Android, browser): the coordinate an author reads off a screenshot is the one they type. WDA takes points; the scale factor is read once from `/wda/screen`. |
+| iOS coordinates | **Tests use screenshot pixels; adapter converts to WDA points** | Consistent with every other adapter (Android, browser): the coordinate an author reads off a screenshot is the one they type. WDA takes points; the scale factor is measured once as screenshot width ÷ `window/size` width (falling back to `/wda/screen`'s `scale` when a screenshot isn't available), since `UIScreen.scale` doesn't match the screenshot on downsampling devices. |
 | iOS logs | **Optional `log_command`, streamed in a thread** | WDA has no log endpoint. On simulators `xcrun simctl spawn <udid> log stream …` works; on devices `idevicesyslog` does. Same pattern as Yocto's `log_command` and `tvos_sim`'s stream thread. No command → `supports_logs=False`. |
 | Desktop input/screenshot library | **`pyautogui`** | One cross-platform dependency for screenshots, mouse and keyboard on all three OSes. Alternatives (pywinauto / xdotool / osascript) would mean three backends to build and document. |
 | Desktop OS coverage | **One `desktop` type, platform label from the host OS** | Windows, Linux and macOS differ only in permissions/prerequisites, not in the operations. `platform:` defaults to `windows` / `linux` / `macos` so tests can still target one OS with `platforms:`. |
@@ -115,10 +115,10 @@ log buffer (`deque(maxlen=5000)`) and the optional log stream thread.
 | `reset_application()` | terminate then launch (WDA cannot wipe app data; documented) |
 | `is_application_running()` | `POST /session/<id>/wda/apps/state` → `value == 4` (running foreground) |
 | `screenshot()` | `GET /screenshot` → base64 PNG → RGB `Image`; decode failure → `ScreenshotError` |
-| `get_screen_info()` | `GET /session/<id>/window/size` (points) × `GET /session/<id>/wda/screen` `scale` → pixel width/height; cached |
+| `get_screen_info()` | screenshot pixel width/height, with `scale` measured as screenshot width ÷ `GET /session/<id>/window/size` width (fallback `GET /session/<id>/wda/screen` `scale`); cached |
 | `get_logs(lines)` | last `lines` entries of the buffer; `DeviceCapabilityError` without `log_command` |
 | `tap`, `swipe`, `long_press`, `drag`, `multi_touch` | one `_actions(fingers)` helper (below); `pinch` inherited |
-| `press_key(key)` | `HOME` → `POST /session/<id>/wda/homescreen`; `VOLUME_UP` / `VOLUME_DOWN` / `LOCK` → `POST /session/<id>/wda/pressButton`; anything else is typed with `POST /session/<id>/wda/keys` `{"value": [chars]}` (`ENTER` → `"\n"`, `DEL`/`BACKSPACE` → `"\b"`) |
+| `press_key(key)` | `HOME` → session-less `POST /wda/homescreen`; `LOCK` / `UNLOCK` → `POST /session/<id>/wda/lock` / `wda/unlock`; `VOLUME_UP` / `VOLUME_DOWN` → `POST /session/<id>/wda/pressButton`; anything else is typed with `POST /session/<id>/wda/keys` `{"value": [chars]}` (`ENTER` → `"\n"`, `DEL`/`BACKSPACE` → `"\b"`) |
 
 ### Gesture engine — `_actions`
 
@@ -144,8 +144,6 @@ one W3C input source:
 - `multi_touch(fingers, ms)`: one source per finger; each path segment is a
   `pointerMove` with `duration = ms / (len(path) - 1)`; all sources are sent
   in the same request so WDA executes them concurrently.
-- After the request, `POST /session/<id>/actions` is followed by
-  `DELETE /session/<id>/actions` (releases pointer state), errors ignored.
 
 ### Errors
 
