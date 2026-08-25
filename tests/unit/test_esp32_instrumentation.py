@@ -77,3 +77,9 @@ def test_unsupported_command(link):
     info = AgentInfo("x", "1", None, 0, 0, frozenset({"status"}))
     with pytest.raises(InstrumentationError, match="state"):
         SerialInstrumentationClient(link, info).state()
+
+
+def test_state_non_object_rejected(link):
+    link.answers["state"] = b"[1, 2, 3]"
+    with pytest.raises(InstrumentationError, match="JSON object"):
+        SerialInstrumentationClient(link, INFO).state()

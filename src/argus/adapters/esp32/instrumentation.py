@@ -49,7 +49,12 @@ class SerialInstrumentationClient(InstrumentationClient):
 
     def state(self) -> dict[str, Any]:
         data = self._fetch("state")
-        return dict(data) if isinstance(data, dict) else {"value": data}
+        if not isinstance(data, dict):
+            raise InstrumentationError(
+                f"Instrumentation 'state' returned non-object JSON: {data!r}",
+                remediation="The firmware agent's state must be a JSON object.",
+            )
+        return data
 
     def capabilities(self) -> list[str]:
         return sorted(self._info.caps & {"status", "state"})
