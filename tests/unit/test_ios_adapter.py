@@ -127,6 +127,15 @@ class TestConnection:
         with pytest.raises(DeviceConnectionError, match="not connected"):
             adapter._require_session()
 
+    def test_connect_twice_disconnects_first(self, adapter, wda):
+        adapter.connect()
+        adapter.connect()
+        session_posts = [i for i, c in enumerate(wda.calls) if c[:2] == ("POST", "/session")]
+        deletes = [i for i, c in enumerate(wda.calls) if c[:2] == ("DELETE", "/session/S1")]
+        assert len(session_posts) == 2
+        assert len(deletes) == 1
+        assert session_posts[0] < deletes[0] < session_posts[1]
+
     def test_connect_unreachable_raises(self, adapter, wda):
         wda.fail_with = DeviceConnectionError("Cannot reach WebDriverAgent", remediation="x")
         with pytest.raises(DeviceConnectionError, match="Cannot reach"):
@@ -212,15 +221,25 @@ class TestObservation:
         adapter.connect()
         info = adapter.get_screen_info()
         assert (info.width, info.height) == (8, 12)
+        assert info.scale == 2.0
         assert adapter._pixel_scale() == 2.0
         adapter.get_screen_info()
-        assert wda.paths("GET").count("/session/S1/wda/screen") == 1  # cached
+        assert wda.paths("GET").count("/screenshot") == 1  # cached
+        assert wda.paths("GET").count("/session/S1/window/size") == 1  # cached
 
-    def test_scale_defaults_to_one_when_missing(self, adapter, wda):
+    def test_scale_falls_back_to_wda_screen_when_screenshot_unavailable(self, adapter, wda):
         adapter.connect()
+        wda.responses[("GET", "/screenshot")] = {"value": "!!!"}
         wda.responses[("GET", "/session/S1/wda/screen")] = {"value": {}}
         assert adapter._pixel_scale() == 1.0
         assert adapter._to_points((10, 20)) == (10, 20)
+
+    def test_measured_scale_wins_over_wda_screen(self, adapter, wda):
+        adapter.connect()
+        # screenshot is 8px wide, window/size is 4 points wide: measured scale is 2.0,
+        # even though /wda/screen (a stale UIScreen.scale on a downsampling device) says 3.
+        wda.responses[("GET", "/session/S1/wda/screen")] = {"value": {"scale": 3}}
+        assert adapter._pixel_scale() == 2.0
 
     def test_to_points_divides_by_scale(self, adapter, wda):
         adapter.connect()
@@ -245,8 +264,7 @@ class TestGestures:
             {"type": "pointerDown", "button": 0},
             {"type": "pointerUp", "button": 0},
         ]
-        assert wda.paths()[-1] == "/session/S1/actions"
-        assert wda.calls[-1][0] == "DELETE"  # pointer state released
+        assert wda.calls[-1][:2] == ("POST", "/session/S1/actions")  # no DELETE: WDA has none
 
     def test_swipe_moves_with_duration(self, adapter, wda):
         adapter.connect()
@@ -312,16 +330,24 @@ class TestGestures:
         with pytest.raises(DeviceConnectionError, match="not connected"):
             adapter.tap(1, 1)
 
+    def test_tap_rounds_half_to_even(self, adapter, wda):
+        # scale is 2.0; 101 / 2 == 50.5, which round() (banker's rounding) sends to 50.
+        adapter.connect()
+        adapter.tap(101, 20)
+        (finger,) = _sources(wda)
+        assert finger["actions"][0]["x"] == 50
+
 
 class TestKeys:
     @pytest.mark.parametrize(
         ("key", "path", "body"),
         [
-            ("HOME", "/session/S1/wda/homescreen", {}),
-            ("KEYCODE_HOME", "/session/S1/wda/homescreen", {}),
+            ("HOME", "/wda/homescreen", {}),
+            ("KEYCODE_HOME", "/wda/homescreen", {}),
             ("VOLUME_UP", "/session/S1/wda/pressButton", {"name": "volumeUp"}),
             ("VOLUME_DOWN", "/session/S1/wda/pressButton", {"name": "volumeDown"}),
-            ("LOCK", "/session/S1/wda/pressButton", {"name": "lock"}),
+            ("LOCK", "/session/S1/wda/lock", {}),
+            ("UNLOCK", "/session/S1/wda/unlock", {}),
             ("ENTER", "/session/S1/wda/keys", {"value": ["\n"]}),
             ("DEL", "/session/S1/wda/keys", {"value": ["\b"]}),
             ("a", "/session/S1/wda/keys", {"value": ["a"]}),
