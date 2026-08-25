@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `desktop` device adapter (optional `argus[desktop]` extra, pyautogui): native
+  applications on Windows, Linux and macOS — launch/stop/reset as a
+  subprocess with stdout/stderr as logs, screenshots (optional `region` crop,
+  HiDPI-aware pixel coordinates), mouse tap/swipe/long-press/drag, keyboard
+  incl. `Ctrl+Shift+x` chords. Platform label defaults to the host OS
+  (`windows` / `linux` / `macos`).
 - `ios` device adapter: iOS apps on simulators and physical devices through
   WebDriverAgent — screenshots, launch/terminate, W3C-Actions gestures (tap,
   swipe, long press, drag, multi-touch, pinch), key input, and optional
