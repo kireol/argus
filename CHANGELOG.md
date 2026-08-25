@@ -7,6 +7,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `ios` device adapter: iOS apps on simulators and physical devices through
+  WebDriverAgent — screenshots, launch/terminate, W3C-Actions gestures (tap,
+  swipe, long press, drag, multi-touch, pinch), key input, and optional
+  `log_command` logs. Platform label `ios`.
 - Touch gestures: `device.long_press`, `device.drag` (press, hold, then
   move), `device.pinch` and `device.multi_touch` actions, with matching
   `Device` methods and `supports_long_press` / `supports_drag` /
