@@ -71,13 +71,23 @@ class ArgusAgent {
       int c = stream_->read();
       if (c < 0) break;
       if (c == '\n') {
-        line_[lineLen_] = '\0';
-        handleLine(line_);
+        if (discarding_) {
+          discarding_ = false;
+        } else {
+          line_[lineLen_] = '\0';
+          handleLine(line_);
+        }
         lineLen_ = 0;
+      } else if (discarding_) {
+        // mid-discard: skip until the terminating '\n'
       } else if (lineLen_ < kMaxLine - 1) {
         line_[lineLen_++] = (char)c;
       } else {
-        lineLen_ = 0;  // overlong line: discard
+        // Overlong line: discard everything through the next '\n' rather than starting
+        // a fresh line mid-stream, which could reparse the tail of a too-long line as if
+        // it were a legitimate command.
+        discarding_ = true;
+        lineLen_ = 0;
       }
     }
   }
@@ -277,6 +287,7 @@ class ArgusAgent {
   LineHandler lineHandler_ = nullptr;
   char line_[kMaxLine];
   size_t lineLen_ = 0;
+  bool discarding_ = false;
   Entry status_[kMaxEntries];
   size_t statusCount_ = 0;
   Entry state_[kMaxEntries];
