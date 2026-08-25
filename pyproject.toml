@@ -39,6 +39,7 @@ dependencies = [
 yocto = ["paramiko>=3.4"]
 ocr = ["pytesseract>=0.3.10"]
 browser = ["playwright>=1.45"]
+desktop = ["pyautogui>=0.9.54"]
 appletv = ["pyatv>=0.14"]
 esp32 = ["pyserial>=3.5", "esptool>=4.7,<6"]
 dev = [
@@ -51,7 +52,7 @@ dev = [
     "types-PyYAML",
     "types-paramiko",
 ]
-all = ["argus[yocto,ocr,browser,appletv,esp32]"]
+all = ["argus[yocto,ocr,browser,desktop,appletv,esp32]"]
 
 [project.scripts]
 argus = "argus.cli.main:app"

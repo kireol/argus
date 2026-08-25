@@ -494,3 +494,15 @@ class TestKeys:
         adapter.connect()
         adapter.press_key(key)
         assert backend.calls[-1] == expected
+
+
+class TestRegistry:
+    def test_registered_as_desktop(self):
+        from argus.adapters.registry import DeviceRegistry
+
+        registry = DeviceRegistry()
+        assert "desktop" in registry.types()
+        device = registry.create(
+            "app", DeviceConfig.model_validate({"type": "desktop", "command": "x"})
+        )
+        assert isinstance(device, DesktopAdapter)
