@@ -18,10 +18,18 @@ from dataclasses import dataclass
 
 from argus.adapters.esp32.transport import Transport
 from argus.exceptions import DeviceConnectionError
+from argus.logging import get_logger
 
 PREFIX = b"\x1b[ARGUS] "
 _READ_CHUNK = 4096
 _READ_POLL = 0.1
+# Bound on the reader's line-accumulation buffer when it is *not* mid-payload (i.e.
+# waiting on a "\n"): protects against a garbage stream with no newline growing forever.
+# Not applied while collecting a payload - that is already bounded by the "ok <len>"
+# header's validated length (see _MAX_PAYLOAD).
+_MAX_LINE_BUFFER = 1024 * 1024  # 1 MiB
+# Sanity bound on a declared "ok <len>" payload length.
+_MAX_PAYLOAD = 4 * 1024 * 1024  # 4 MiB
 
 
 @dataclass(frozen=True)
@@ -88,12 +96,20 @@ class AgentLink:
         self._request_lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._log = get_logger("argus.esp32.link")
         # Set when a request times out: the board may still answer it after we've given up,
         # leaving a stale reply in `_responses` that the *next* request must discard before
         # waiting on its own response. Only drain in that case - draining unconditionally
         # races the reader thread, which can enqueue a request's own answer before its
         # `request()` call gets a chance to write and start waiting for it.
         self._abandoned = False
+        # Bumped by reset_stream() after a board reset. The reader thread compares its
+        # locally-held generation against this each loop iteration and discards its
+        # in-flight `buffer`/`pending` state when it has changed, so bytes left over from
+        # a request that was mid-payload across the reset cannot swallow the fresh boot
+        # stream (or be misinterpreted as part of it).
+        self._generation_lock = threading.Lock()
+        self._generation = 0
 
     # -- lifecycle ---------------------------------------------------------------------
 
@@ -128,6 +144,13 @@ class AgentLink:
         whichever later request happens to ask for that same ``cmd``. Closing that gap
         fully would require the firmware to echo back a request id, which it does not.
         """
+        for part in (cmd, *args):
+            if "\r" in part or "\n" in part:
+                raise DeviceConnectionError(
+                    f"Agent request {cmd!r} argument {part!r} contains a line break.",
+                    remediation="Line breaks in a command or argument would inject "
+                    "extra protocol frames onto the wire; strip them before sending.",
+                )
         line = " ".join((cmd, *args)).encode("utf-8")
         with self._request_lock:
             if self._abandoned:
@@ -160,6 +183,26 @@ class AgentLink:
     def hello(self) -> AgentInfo:
         return parse_hello(self.request("hello"))
 
+    def reset_stream(self) -> None:
+        """Discard reader and request state after the transport has been reset.
+
+        Call this immediately after ``transport.reset()``. Without it, a request that
+        was mid-payload when the board reset (e.g. a screenshot the agent never
+        finished sending) would leave a stale, incomplete frame in the reader's
+        `buffer`/`pending` locals; bytes from the fresh boot stream would then be fed
+        into finishing *that* frame instead of being parsed as new log lines/replies. A
+        stale reply could also already be queued in `_responses`.
+        """
+        with self._request_lock:
+            self._drain()
+            self._abandoned = False
+            with self._generation_lock:
+                self._generation += 1
+
+    def _current_generation(self) -> int:
+        with self._generation_lock:
+            return self._generation
+
     def _drain(self) -> None:
         while True:
             try:
@@ -172,13 +215,24 @@ class AgentLink:
     def _run(self) -> None:
         buffer = b""
         pending: tuple[str, int] | None = None  # (cmd, payload length) awaiting bytes
+        generation = self._current_generation()
         while not self._stop.is_set():
             try:
                 chunk = self._transport.read(_READ_CHUNK, _READ_POLL)
             except Exception:  # noqa: BLE001 - transport closed underneath us
                 break
+            current_generation = self._current_generation()
+            if current_generation != generation:
+                buffer, pending = b"", None
+                generation = current_generation
             if chunk:
                 buffer += chunk
+                if pending is None and len(buffer) > _MAX_LINE_BUFFER:
+                    self._log.warning(
+                        "esp32 agent link: %d bytes with no newline, dropping buffer",
+                        len(buffer),
+                    )
+                    buffer = b""
             while True:
                 if pending is not None:
                     cmd, length = pending
@@ -210,10 +264,16 @@ class AgentLink:
         rest = parts[2] if len(parts) > 2 else ""
         if status == "ok":
             try:
-                return (cmd, int(rest))
+                length = int(rest)
             except ValueError:
                 self._responses.put(_Response(cmd, b"", f"bad length {rest!r}"))
                 return None
+            if not (0 <= length <= _MAX_PAYLOAD):
+                self._responses.put(
+                    _Response(cmd, b"", f"length {length} out of range (0..{_MAX_PAYLOAD})")
+                )
+                return None
+            return (cmd, length)
         if status == "err":
             self._responses.put(_Response(cmd, b"", rest or "unknown error"))
             return None
