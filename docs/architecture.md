@@ -70,6 +70,22 @@ src/argus/
 └── utilities/        duration parsing, variable expansion
 ```
 
+## CI/CD layer (`argus.ci`)
+
+`argus ci run` is an orchestration layer over `TestRunner`, never a second
+runner. `argus.ci.runner.CIRunner` detects the provider
+(`argus.ci.providers`, a registry), resolves a suite into the engine's
+`TestFilter` (`argus.ci.suites`), schedules worker batches
+(`argus.ci.scheduler`), runs pre-flight and `setup` once, executes each batch
+with `TestRunner.run(RunOptions(retry=…, cancel=…, results_dir=…))`,
+classifies results (`argus.ci.classify`), applies quality gates
+(`argus.ci.policy`), writes `argus-results/` (`argus.ci.artifacts`,
+`argus.ci.result` for the versioned `report.json`), and publishes through a
+reporter registry (`argus.ci.reporters`; GitHub job summary/annotations,
+generic elsewhere). Exit codes are centralized in `argus.ci.exit_codes`.
+Provider-specific code lives only in providers/reporters. See
+[ci-cd.md](ci-cd.md).
+
 ## Separation of concerns (spec §2)
 
 Five concepts are kept strictly apart:

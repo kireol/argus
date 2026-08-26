@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from argus import __version__
@@ -103,6 +104,17 @@ tr.hidden { display: none; }
 }
 a { color: var(--accent); }
 .footer { margin-top: 2rem; color: var(--muted); font-size: .8rem; }
+.meta { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem;
+        margin: .75rem 0 1rem; font-size: .9rem; }
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; }
+.badge { display: inline-block; border-radius: 999px; padding: .05rem .5rem; font-size: .72rem;
+         margin-left: .4rem; background: #fef3c7; color: #92400e; }
+.badge.known { background: #e0e7ff; color: #3730a3; }
+.badge.notrun { background: #f3f4f6; color: #374151; }
+.notice { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;
+          padding: .6rem .9rem; margin: .5rem 0; }
+.notice.bad { background: #fef2f2; border-color: #fecaca; }
 """
 
 _JS = """
@@ -235,16 +247,29 @@ def _detail_row(test: TestResult, report_dir: Path) -> str | None:
     )
 
 
-def _test_rows(tests: list[TestResult], report_dir: Path) -> str:
+Badges = Callable[[TestResult], Sequence[str]]
+
+
+def _badge_html(badges: Sequence[str]) -> str:
+    parts = []
+    for badge in badges:
+        lowered = badge.lower()
+        cls = "known" if "known" in lowered else "notrun" if "not run" in lowered else ""
+        parts.append(f'<span class="badge {cls}">{html.escape(badge)}</span>')
+    return "".join(parts)
+
+
+def _test_rows(tests: list[TestResult], report_dir: Path, badges: Badges | None = None) -> str:
     rows: list[str] = []
     for test in tests:
         status_class = _STATUS_CLASS[test.status]
         label = _STATUS_LABEL[test.status]
         symbol = {"pass": "✓", "fail": "✗", "skip": "–"}[status_class]
         platform = html.escape(test.platform or "—")
+        extra = _badge_html(badges(test)) if badges is not None else ""
         rows.append(
             f'<tr class="test-row {status_class}" data-status="{label}">'
-            f'<td class="status">{symbol} {label}</td>'
+            f'<td class="status">{symbol} {label}{extra}</td>'
             f"<td>{html.escape(test.test_id)}</td>"
             f"<td>{html.escape(test.name)}</td>"
             f"<td>{platform}</td>"
@@ -257,7 +282,9 @@ def _test_rows(tests: list[TestResult], report_dir: Path) -> str:
     return "".join(rows)
 
 
-def _grouped_sections(result: RunResult, report_dir: Path) -> str:
+def _grouped_sections(
+    result: RunResult, report_dir: Path, badges: Badges | None = None
+) -> str:
     by_feature: dict[str, list[TestResult]] = defaultdict(list)
     for test in result.tests:
         by_feature[test.feature].append(test)
@@ -280,24 +307,56 @@ def _grouped_sections(result: RunResult, report_dir: Path) -> str:
             f"<th>Status</th><th>ID</th><th>Name</th>"
             f"<th>Platform</th><th>Duration</th><th>Attempts</th>"
             f"</tr></thead><tbody>"
-            f"{_test_rows(tests, report_dir)}"
+            f"{_test_rows(tests, report_dir, badges)}"
             f"</tbody></table></section>"
         )
     return "".join(sections)
 
 
-def write_html_report(result: RunResult, path: Path) -> Path:
-    """Write an HTML results page next to per-test artifact images."""
+def _meta_html(fields: Sequence[tuple[str, str]]) -> str:
+    if not fields:
+        return ""
+    items = "".join(
+        f"<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>" for k, v in fields if v
+    )
+    return f'<dl class="meta">{items}</dl>'
+
+
+def _notices_html(notices: Sequence[tuple[str, str]]) -> str:
+    return "".join(
+        f'<div class="notice {"bad" if level == "error" else ""}">{html.escape(text)}</div>'
+        for level, text in notices
+    )
+
+
+def write_html_report(
+    result: RunResult,
+    path: Path,
+    *,
+    title: str = "Argus test report",
+    status_label: str | None = None,
+    header_fields: Sequence[tuple[str, str]] = (),
+    notices: Sequence[tuple[str, str]] = (),
+    badges: Badges | None = None,
+) -> Path:
+    """Write an HTML results page next to per-test artifact images.
+
+    The keyword arguments let a caller (the CI layer) add context rows
+    (provider, branch, commit...), notices (policy violations) and per-test
+    badges (flaky / known failure) without a second renderer.
+    """
     report_dir = path.parent
-    status_label = result.status.value.replace("_", " ").upper()
+    status_label = status_label or result.status.value.replace("_", " ").upper()
+    started = f"{result.started_at:%Y-%m-%d %H:%M:%S UTC}"
     document = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Argus Report — {html.escape(status_label)}</title>
+<title>{html.escape(title)} — {html.escape(status_label)}</title>
 <style>{_CSS}</style></head><body>
-<h1>Argus test report</h1>
-<p class="muted">Framework {html.escape(__version__)} · started {result.started_at:%Y-%m-%d %H:%M:%S UTC}
+<h1>{html.escape(title)}</h1>
+<p class="muted">Framework {html.escape(__version__)} · started {started}
 {" · " + html.escape(result.results_dir) if result.results_dir else ""}</p>
+{_meta_html(header_fields)}
 <div class="summary">
   <div class="card"><span class="n">{result.executed}</span>executed</div>
   <div class="card"><span class="n">{result.passed_count}</span>passed</div>
@@ -307,13 +366,14 @@ def write_html_report(result: RunResult, path: Path) -> Path:
 </div>
 <p><strong>Result:</strong> {html.escape(status_label)}</p>
 {f'<p class="error">{html.escape(result.stop_reason)}</p>' if result.stop_reason else ""}
+{_notices_html(notices)}
 <div class="filters">
   <button type="button" class="active" data-filter="all">All</button>
   <button type="button" data-filter="passed">Passed</button>
   <button type="button" data-filter="failed">Failed</button>
   <button type="button" data-filter="skipped">Skipped</button>
 </div>
-{_grouped_sections(result, report_dir)}
+{_grouped_sections(result, report_dir, badges)}
 <p class="footer">Open image thumbnails for full size. Artifact folders sit beside this report.</p>
 <script>{_JS}</script>
 </body></html>

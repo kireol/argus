@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from argus.ci.categories import RETRY_ALIASES, RETRYABLE, canonical_retry_category
 from argus.models.common import Region
 from argus.utilities.duration import parse_duration
 
@@ -296,6 +297,203 @@ class MCPConfig(BaseModel):
         return value.rstrip("/") or "/"
 
 
+# -- CI/CD ----------------------------------------------------------------------------------
+
+POLICY_ACTIONS = ("fail", "warn", "ignore")
+SCHEDULING_STRATEGIES = ("sequential", "balanced")
+
+
+class CISuiteConfig(BaseModel):
+    """A named selection policy (``argus ci run --suite <name>``).
+
+    A suite is *not* a second test-definition system: it resolves into the
+    engine's own :class:`~argus.engine.filters.TestFilter`. ``extends`` merges
+    another suite's selectors first (lists are unioned).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = ""
+    extends: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    features: list[str] = Field(default_factory=list)
+    platforms: list[str] = Field(default_factory=list)
+    tests: list[str] = Field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return not (self.tags or self.features or self.platforms or self.tests)
+
+
+class CIRetryConfig(BaseModel):
+    """Run-level retry policy for transient failures.
+
+    ``max_attempts`` is the *total* number of attempts per test (2 = one
+    retry). Assertion failures and visual regressions are never retried.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    max_attempts: int = Field(default=2, ge=1, le=10)
+    on: list[str] = Field(
+        default_factory=lambda: [
+            "timeout",
+            "device_error",
+            "connection_error",
+            "screenshot_capture_error",
+        ]
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _yaml_boolean_key(cls, data: Any) -> Any:
+        # YAML 1.1 parses a bare ``on:`` key as boolean True; accept both spellings.
+        if isinstance(data, dict) and True in data and "on" not in data:
+            data = dict(data)
+            data["on"] = data.pop(True)
+        return data
+
+    @field_validator("on")
+    @classmethod
+    def _known_categories(cls, value: list[str]) -> list[str]:
+        canonical: list[str] = []
+        for name in value:
+            resolved = canonical_retry_category(name)
+            if resolved is None:
+                allowed = sorted(set(RETRYABLE) | set(RETRY_ALIASES))
+                raise ValueError(
+                    f"unknown retry category {name!r}. Allowed: {', '.join(allowed)}"
+                )
+            if resolved not in canonical:
+                canonical.append(resolved)
+        return canonical
+
+
+class CIExecutionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workers: int = Field(default=1, ge=1, le=64)
+    strategy: str = "balanced"
+    # Continue after failures by default so CI produces full diagnostics.
+    fail_fast: bool = False
+
+    @field_validator("strategy")
+    @classmethod
+    def _known_strategy(cls, value: str) -> str:
+        if value not in SCHEDULING_STRATEGIES:
+            raise ValueError(
+                f"unknown scheduling strategy {value!r}. "
+                f"Allowed: {', '.join(SCHEDULING_STRATEGIES)}"
+            )
+        return value
+
+
+class CIArtifactsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    directory: str = "argus-results"
+    # CI keeps evidence for passing tests too (screenshots for the HTML report).
+    retain_on_success: bool = True
+    # Save actual/expected/diff images for every image verification (pass or
+    # fail) so report.html shows the comparison; same as results.save_comparison_images.
+    save_comparisons: bool = False
+
+    @field_validator("directory")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("ci.artifacts.directory must not be empty")
+        return value
+
+
+class CIPolicyRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = "fail"
+
+    @field_validator("action")
+    @classmethod
+    def _known_action(cls, value: str) -> str:
+        if value not in POLICY_ACTIONS:
+            raise ValueError(
+                f"unknown policy action {value!r}. Allowed: {', '.join(POLICY_ACTIONS)}"
+            )
+        return value
+
+
+class CIPolicyConfig(BaseModel):
+    """Quality gates evaluated after execution (provider-neutral)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Suites (by name) whose selected tests must all pass.
+    required: list[str] = Field(default_factory=list)
+    failures: CIPolicyRule = Field(default_factory=lambda: CIPolicyRule(action="fail"))
+    visual_regression: CIPolicyRule = Field(
+        default_factory=lambda: CIPolicyRule(action="fail")
+    )
+    known_failure: CIPolicyRule = Field(default_factory=lambda: CIPolicyRule(action="warn"))
+    flaky: CIPolicyRule = Field(default_factory=lambda: CIPolicyRule(action="warn"))
+
+
+class CIKnownFailure(BaseModel):
+    """A failure that is expected (tracked elsewhere) and must stay visible."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test: str = Field(min_length=1)
+    reason: str = ""
+    platform: str | None = None
+
+
+class CIReportingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: bool = True
+    annotations: bool = True
+    max_annotations: int = Field(default=20, ge=0, le=500)
+
+
+class CIConfig(BaseModel):
+    """``ci:`` section — see docs/ci-cd.md."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    #: ``auto`` detects the provider; otherwise a registered provider name.
+    provider: str = "auto"
+    suites: dict[str, CISuiteConfig] = Field(default_factory=dict)
+    retry: CIRetryConfig = Field(default_factory=CIRetryConfig)
+    execution: CIExecutionConfig = Field(default_factory=CIExecutionConfig)
+    artifacts: CIArtifactsConfig = Field(default_factory=CIArtifactsConfig)
+    policy: CIPolicyConfig = Field(default_factory=CIPolicyConfig)
+    known_failures: list[CIKnownFailure] = Field(default_factory=list)
+    reporting: CIReportingConfig = Field(default_factory=CIReportingConfig)
+
+    @field_validator("provider")
+    @classmethod
+    def _provider_shape(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            raise ValueError("ci.provider must not be empty (use 'auto')")
+        return cleaned
+
+    @field_validator("suites")
+    @classmethod
+    def _suite_names(cls, value: dict[str, CISuiteConfig]) -> dict[str, CISuiteConfig]:
+        for name, suite in value.items():
+            if not name.strip():
+                raise ValueError("suite names must not be empty")
+            if suite.extends is not None and suite.extends not in value:
+                raise ValueError(
+                    f"suite {name!r} extends unknown suite {suite.extends!r}. "
+                    f"Defined suites: {', '.join(sorted(value)) or '<none>'}"
+                )
+        return value
+
+
 class AppConfig(BaseModel):
     """Root configuration object."""
 
@@ -311,6 +509,7 @@ class AppConfig(BaseModel):
     wait: WaitConfig = Field(default_factory=WaitConfig)
     preflight: PreflightConfig = Field(default_factory=PreflightConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    ci: CIConfig = Field(default_factory=CIConfig)
     test_paths: list[str] = Field(default_factory=lambda: ["test_suites"])
     asset_paths: list[str] = Field(default_factory=lambda: ["assets/images"])
     variables: dict[str, Any] = Field(default_factory=dict)
