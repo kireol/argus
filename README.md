@@ -122,6 +122,8 @@ argus-test-creator demo DIR [--run]   scripted demo recording (fake target)
 * [Getting started](docs/getting-started.md)
 * [Architecture](docs/architecture.md)
 * [Recording guide](docs/recording.md) — browser, desktop, Android, capabilities and limits
+* [Android recording](docs/android-recording.md) — ADB setup, `getevent`-based touch/key
+  recording, device differences
 * [Assertion guide](docs/assertions.md) — visual, OCR, regions, suggestions, synchronization
 * [Argus integration](docs/integrations.md)
 * [Plugin / developer guide](docs/plugin-development.md)

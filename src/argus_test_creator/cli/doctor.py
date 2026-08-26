@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from argus_test_creator import __version__
 
@@ -90,19 +90,81 @@ def _ocr() -> list[Item]:
     return [("warn", "Tesseract", reason)]
 
 
-def _android() -> list[Item]:
-    adb = shutil.which("adb") or os.environ.get("ADB")
-    if not adb:
-        return [("warn", "ADB", "not found on PATH (needed for Android targets)")]
-    items: list[Item] = [("ok", "ADB", adb)]
+def _android(client: Any = None, *, serial: str | None = None) -> list[Item]:
+    """ADB → devices → selected device → version → input devices → touchscreen → getevent →
+    screenshot. Every failure carries what to do next."""
+    from argus_test_creator.adapters.android import SubprocessAdbClient, select_touchscreen
+    from argus_test_creator.core.errors import TargetConnectionError
+
+    adb = client or SubprocessAdbClient(os.environ.get("ADB") or None)
+    ok, detail = adb.available()
+    if not ok:
+        return [("warn", "ADB", f"{detail} — needed only for Android targets")]
+    items: list[Item] = [("ok", "ADB", detail)]
     try:
-        out = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=15,
-                             check=False).stdout
-        devices = [line.split()[0] for line in out.splitlines()[1:] if "\tdevice" in line]
-        items.append(("ok" if devices else "warn", "Devices",
-                      ", ".join(devices) if devices else "no connected devices"))
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        items.append(("warn", "Devices", f"adb devices failed: {exc}"))
+        devices = adb.list_devices()
+    except TargetConnectionError as exc:
+        return [*items, ("warn", "Devices", f"{exc.message} — {exc.remediation or ''}".strip())]
+    usable = [d for d in devices if d.usable]
+    if not devices:
+        items.append(("warn", "Devices", "no connected devices — enable USB debugging, connect "
+                                         "the device, accept the prompt, then run `adb devices`"))
+        return items
+    described = ", ".join(f"{d.label()} [{d.state}]" for d in devices)
+    items.append(("ok" if usable else "fail", "Devices",
+                  f"{len(usable)} connected ({described})" if usable else
+                  f"{described} — unlock the device and accept 'Allow USB debugging'"))
+    if not usable:
+        return items
+    serial = serial or os.environ.get("ARGUS_ANDROID_SERIAL")
+    if serial and serial not in {d.serial for d in usable}:
+        items.append(("fail", "Selected device", f"{serial} is not connected/authorized"))
+        return items
+    if not serial:
+        if len(usable) > 1:
+            items.append(("warn", "Selected device",
+                          "several devices — set ARGUS_ANDROID_SERIAL or the target 'serial' "
+                          "setting to pick one"))
+            return items
+        serial = usable[0].serial
+    items.append(("ok", "Selected device", serial))
+    try:
+        info = adb.get_device_info(serial)
+        items.append(("ok", "Android version",
+                      f"{info.android_version or '?'} (SDK {info.sdk or '?'}, {info.model or '?'}"
+                      f", {info.natural_width}x{info.natural_height}, rotation {info.rotation})"))
+    except TargetConnectionError as exc:
+        items.append(("warn", "Android version", f"{exc.message} — {exc.remediation or ''}"))
+    ok, detail = adb.getevent_available(serial)
+    if not ok:
+        items.append(("fail", "getevent",
+                      f"{detail} — recording needs `adb shell getevent`; check the device is "
+                      "unlocked and USB debugging is authorized"))
+    else:
+        items.append(("ok", "getevent", detail))
+        try:
+            inputs = adb.get_input_devices(serial)
+            items.append(("ok" if inputs else "fail", "Input devices",
+                          ", ".join(f"{d.path} ({d.name})" for d in inputs) or
+                          "none listed — is the device unlocked?"))
+            touch, candidates = select_touchscreen(inputs)
+            if touch is None:
+                items.append(("warn", "Touchscreen",
+                              "not detected — only hardware keys can be recorded; set the "
+                              "'input_device' target setting if you know the panel"))
+            else:
+                extra = (f" (+{len(candidates) - 1} other candidate(s))"
+                         if len(candidates) > 1 else "")
+                items.append(("ok", "Touchscreen", f"{touch.path} {touch.name}{extra}"))
+        except TargetConnectionError as exc:
+            items.append(("warn", "Input devices", exc.message))
+    try:
+        data = adb.screenshot(serial)
+        items.append(("ok" if data.startswith(b"\x89PNG") else "fail", "Screenshot",
+                      f"{len(data)} bytes" if data.startswith(b"\x89PNG") else
+                      "screencap returned no PNG — unlock the device and retry"))
+    except TargetConnectionError as exc:
+        items.append(("fail", "Screenshot", f"{exc.message} — {exc.remediation or ''}"))
     return items
 
 

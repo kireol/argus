@@ -43,10 +43,17 @@ class JobWatcher(QObject):
     finished = Signal(object)
     failed = Signal(object)
 
-    def __init__(self, job: Job[Any], parent: QObject | None = None) -> None:
+    def __init__(self, job: Job[Any], parent: QObject | None = None, *,
+                 start: bool = True) -> None:
         super().__init__(parent)
         self.job = job
-        job.on_done(self._done)
+        if start:
+            self.start()
+
+    def start(self) -> None:
+        """Register the done-callback. Connect the signals *before* calling this: a job
+        that has already finished fires the callback immediately."""
+        self.job.on_done(self._done)
 
     def _done(self, job: Job[Any]) -> None:
         if job.future.cancelled():
@@ -60,7 +67,8 @@ class JobWatcher(QObject):
 
 def watch(job: Job[Any], on_result: Callable[[Any], None],
           on_error: Callable[[BaseException], None], parent: QObject) -> JobWatcher:
-    watcher = JobWatcher(job, parent)
+    watcher = JobWatcher(job, parent, start=False)
     watcher.finished.connect(on_result, Qt.ConnectionType.QueuedConnection)
     watcher.failed.connect(on_error, Qt.ConnectionType.QueuedConnection)
+    watcher.start()
     return watcher
