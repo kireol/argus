@@ -102,6 +102,12 @@ xcodebuild -project examples/tvos/ArgusDemoTV.xcodeproj \
   build
 ```
 
+> **Heads-up:** `ArgusDemoTV.xcodeproj/project.pbxproj` was written by hand and
+> has not yet been compiled against a real tvOS SDK — the machine this example
+> was authored on had only the Command Line Tools installed. If the build
+> fails, the first settings to check are `TVOS_DEPLOYMENT_TARGET` (17.0) and
+> `objectVersion` (56); the Swift sources themselves type-check cleanly.
+
 That produces
 `examples/tvos/build/Build/Products/Debug-appletvsimulator/ArgusDemoTV.app`,
 which is exactly the default `app_path` in `argus.yaml`. Build somewhere else
