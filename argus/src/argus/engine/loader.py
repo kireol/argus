@@ -16,9 +16,10 @@ import yaml
 from pydantic import ValidationError
 
 from argus.exceptions import TestDefinitionError
-from argus.models.test_definition import FeatureDefinition, TestDefinition
+from argus.models.test_definition import FeatureDefinition, SuiteDefinition, TestDefinition
 
 _YAML_SUFFIXES = {".yaml", ".yml"}
+_TOP_LEVEL_KEYS = ("tests", "features", "suite")
 
 
 def discover_test_files(paths: list[Path]) -> list[Path]:
@@ -44,6 +45,8 @@ class TestSuite:
 
     tests: list[TestDefinition] = field(default_factory=list)
     features: dict[str, FeatureDefinition] = field(default_factory=dict)  # keyed lower-case
+    #: Suite-level ``setup``/``teardown`` (at most one ``suite:`` block per suite).
+    lifecycle: SuiteDefinition | None = None
 
     def feature_for(self, name: str) -> FeatureDefinition | None:
         """Feature lifecycle for a test's ``feature`` (case-insensitive)."""
@@ -54,8 +57,10 @@ def _parse_file(path: Path) -> list[dict[str, Any]]:
     return _parse_file_full(path)[0]
 
 
-def _parse_file_full(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Return ``(raw_tests, raw_features)`` from one YAML file."""
+def _parse_file_full(
+    path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any] | None]:
+    """Return ``(raw_tests, raw_features, raw_suite)`` from one YAML file."""
     try:
         with path.open("r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
@@ -66,17 +71,20 @@ def _parse_file_full(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         ) from exc
 
     if data is None:
-        return [], {}
-    if isinstance(data, dict) and "id" not in data and ("tests" in data or "features" in data):
+        return [], {}, None
+    if isinstance(data, dict) and "id" not in data and any(k in data for k in _TOP_LEVEL_KEYS):
         tests = data.get("tests", [])
         if not isinstance(tests, list):
             raise TestDefinitionError(f"{path}: top-level 'tests' must be a list.")
         features = data.get("features", {})
         if not isinstance(features, dict):
             raise TestDefinitionError(f"{path}: top-level 'features' must be a mapping.")
-        return tests, features
+        suite = data.get("suite")
+        if suite is not None and not isinstance(suite, dict):
+            raise TestDefinitionError(f"{path}: top-level 'suite' must be a mapping.")
+        return tests, features, suite
     if isinstance(data, dict):
-        return [data], {}
+        return [data], {}, None
     raise TestDefinitionError(
         f"{path}: expected a test definition mapping or a top-level 'tests' list."
     )
@@ -95,11 +103,27 @@ def load_suite(paths: list[Path]) -> TestSuite:
     """
     definitions: list[TestDefinition] = []
     features: dict[str, FeatureDefinition] = {}
+    lifecycle: SuiteDefinition | None = None
     seen: dict[str, Path] = {}
     seen_features: dict[str, Path] = {}
 
     for file in discover_test_files(paths):
-        raw_tests, raw_features = _parse_file_full(file)
+        raw_tests, raw_features, raw_suite = _parse_file_full(file)
+        if raw_suite is not None:
+            if lifecycle is not None:
+                raise TestDefinitionError(
+                    f"Duplicate suite definition in {file} "
+                    f"(first defined in {lifecycle.source_file}).",
+                    remediation="Define the suite's setup/teardown in one file only.",
+                )
+            try:
+                lifecycle = SuiteDefinition.model_validate(raw_suite)
+            except ValidationError as exc:
+                raise TestDefinitionError(
+                    f"Invalid suite definition in {file}:\n{exc}",
+                    remediation="Fix the fields listed above; see docs/test-authoring.md.",
+                ) from exc
+            lifecycle.source_file = str(file)
         for name, raw_feature in raw_features.items():
             key = str(name).strip().lower()
             if key in seen_features:
@@ -142,4 +166,4 @@ def load_suite(paths: list[Path]) -> TestSuite:
             test.source_file = str(file)
             definitions.append(test)
 
-    return TestSuite(tests=definitions, features=features)
+    return TestSuite(tests=definitions, features=features, lifecycle=lifecycle)
