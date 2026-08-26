@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.5] - 2026-08-26
+
+### Added
+- **OCR evidence with `--save-comparisons`.** Text verifications
+  (`text_present` / `text_not_present`) now save evidence like image verifies:
+  `actual.png`, `ocr.txt` (per step: expected text, region, verdict, the text
+  OCR actually read) and `<n>_ocr_region.png` with the OCR region outlined —
+  for every step when `results.save_comparison_images` / `--save-comparisons`
+  is on, and for the failing step on failure. The artifact directory is kept
+  on success and `report.html` shows the screenshot plus a collapsible
+  "OCR evidence" block. Text verification results now record their `region`.
+
 ## [1.2.4] - 2026-08-26
 
 ### Added

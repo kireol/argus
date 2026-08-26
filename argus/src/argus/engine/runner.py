@@ -725,6 +725,12 @@ class TestRunner:
                     test_artifacts,
                     all_steps=save_comparisons,
                 )
+                self._save_text_evidence(
+                    context,
+                    result,
+                    test_artifacts,
+                    all_steps=save_comparisons,
+                )
             if not result.passed:
                 self._save_failure_diagnostics(context, result, test_artifacts)
         artifacts.finalize_test(test_artifacts, passed=result.passed)
@@ -810,6 +816,74 @@ class TestRunner:
                 "Failed to save comparison images for %s", result.test_id
             )
 
+    def _save_text_evidence(
+        self,
+        context: TestContext,
+        result: TestResult,
+        artifacts: object,
+        *,
+        all_steps: bool,
+    ) -> None:
+        """Evidence for OCR/text verifications: the screen, the recognised text, the region.
+
+        Writes ``actual.png`` (once), ``ocr.txt`` (one block per text step) and, when a
+        step used a ``region``, ``<n>_ocr_region.png`` with that region outlined. Marks
+        the artifact directory as holding comparisons so it is retained on success when
+        ``results.save_comparison_images`` is on.
+        """
+        from argus.artifacts.manager import TestArtifacts
+
+        assert isinstance(artifacts, TestArtifacts)
+        if (
+            not result.passed
+            and not self.config.results.save_screenshots_on_failure
+            and not all_steps
+        ):
+            return
+        # Text verifiers record the OCR output; that marks a step as a text check
+        # whatever the condition was called (text_present, text_not_present, ...).
+        text_steps = [
+            (index, s)
+            for index, s in enumerate(result.steps, start=1)
+            if s.verification is not None and "extracted_text" in s.verification.details
+        ]
+        if not text_steps:
+            return
+        if not all_steps:
+            failed = [(i, s) for i, s in text_steps if not s.passed]
+            text_steps = failed or text_steps[-1:]
+        try:
+            observation = context.last_observation
+            if observation is None and context.device is not None:
+                try:
+                    observation = context.observe()
+                except UTFError:
+                    observation = None
+            if observation is not None and not (artifacts.directory / "actual.png").exists():
+                artifacts.save_image("actual.png", observation.image)
+            blocks: list[str] = []
+            for index, step in text_steps:
+                assert step.verification is not None
+                details = step.verification.details
+                expected = details.get("expected_text", details.get("expected_absent", ""))
+                region = details.get("region")
+                blocks.append(
+                    f"step {index}: {step.name or step.action} — {step.verification.verifier} "
+                    f"{'PASSED' if step.passed else 'FAILED'}\n"
+                    f"expected: {expected!r}\n"
+                    + (f"region: {region}\n" if region else "")
+                    + f"message: {step.verification.message}\n"
+                    f"extracted text:\n{details.get('extracted_text', '')}\n"
+                )
+                if observation is not None and isinstance(region, dict):
+                    artifacts.save_image(
+                        f"{index}_ocr_region.png", _outline_region(observation.image, region)
+                    )
+            artifacts.save_text("ocr.txt", "\n".join(blocks))
+            artifacts.saved_comparisons = True
+        except Exception:  # noqa: BLE001 - evidence must never mask the real result
+            self.log.exception("Failed to save text evidence for %s", result.test_id)
+
     def _save_failure_diagnostics(
         self, context: TestContext, result: TestResult, artifacts: object
     ) -> None:
@@ -849,6 +923,20 @@ class TestRunner:
             artifacts.save_json("metadata.json", result.model_dump(mode="json"))
         except Exception:  # noqa: BLE001 - diagnostics must never mask the real failure
             self.log.exception("Failed to save failure diagnostics for %s", result.test_id)
+
+
+def _outline_region(image: Any, region: dict[str, Any]) -> Any:
+    """A copy of ``image`` with the OCR region outlined (evidence for text checks)."""
+    from PIL import ImageDraw
+
+    annotated = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    x, y = int(region["x"]), int(region["y"])
+    right = x + int(region.get("width", 1))
+    bottom = y + int(region.get("height", 1))
+    for inset in range(3):
+        draw.rectangle([x - inset, y - inset, right + inset, bottom + inset], outline="#ff2d55")
+    return annotated
 
 
 def _categorize(exc: UTFError) -> str:
