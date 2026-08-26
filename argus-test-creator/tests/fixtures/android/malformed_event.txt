@@ -1,0 +1,12 @@
+add device 1: /dev/input/event2
+  name:     "sec_touchscreen"
+[   60.000000] /dev/input/event2: EV_ABS       ABS_MT_TRACKING_ID   0000002f
+[   60.000000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_X    00000200
+this is not an event line
+[   60.000000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_Y    zz
+[   60.000000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_Y    00000400
+[   60.000000] /dev/input/event2: EV_MSC       MSC_SCAN             0000abcd
+[   60.000000] /dev/input/event2: 0005         0042                 00000001
+[   60.000000] /dev/input/event2: EV_SYN       SYN_REPORT           00000000
+[   60.100000] /dev/input/event2: EV_ABS       ABS_MT_TRACKING_ID   ffffffff
+[   60.100000] /dev/input/event2: EV_SYN       SYN_REPORT           00000000
