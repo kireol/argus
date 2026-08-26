@@ -6,7 +6,8 @@
 #       with:
 #         suite: pr
 #
-# The action installs Argus from this repository, runs `argus ci run` with the
+# The action installs Argus from the `argus/` project of this repository (a
+# monorepo that also holds the Argus Test Creator), runs `argus ci run` with the
 # inputs below, uploads `argus-results/` as a workflow artifact, and exposes the
 # run status and report paths as outputs. All test-execution logic lives in the
 # Argus CLI; this file only wires inputs to flags. It is designed to be moved
@@ -111,9 +112,9 @@ runs:
       run: |
         set -euo pipefail
         if [ -n "$ARGUS_EXTRAS" ]; then
-          python -m pip install -q "${ARGUS_ACTION_PATH}[${ARGUS_EXTRAS}]"
+          python -m pip install -q "${ARGUS_ACTION_PATH}/argus[${ARGUS_EXTRAS}]"
         else
-          python -m pip install -q "${ARGUS_ACTION_PATH}"
+          python -m pip install -q "${ARGUS_ACTION_PATH}/argus"
         fi
         argus version
 
