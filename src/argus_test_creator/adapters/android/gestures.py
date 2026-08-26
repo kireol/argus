@@ -23,6 +23,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from argus_test_creator.adapters.android.coordinates import AndroidCoordinateMapper
 from argus_test_creator.adapters.android.keys import map_linux_key
@@ -82,6 +83,7 @@ class AndroidGestureRecognizer:
         self._sequence_events = 0
         self._max_fingers = 0
         self._keys_down: dict[tuple[str, str], float] = {}
+        self._last_time: float | None = None
         self.ignored = 0
         self.recognized = 0
 
@@ -104,6 +106,7 @@ class AndroidGestureRecognizer:
         """Consume one raw event; returns zero or more finished gestures."""
         if event.timestamp is None:
             event = event.model_copy(update={"timestamp": self._clock()})
+        self._last_time = event.timestamp
         if event.event_type == EventType.EV_KEY and event.code != "BTN_TOUCH":
             return self._key(event)
         if self._touch_device is not None and event.device != self._touch_device:
@@ -123,7 +126,7 @@ class AndroidGestureRecognizer:
         """Finish an in-progress sequence (recording stopped mid-gesture)."""
         if not self.in_gesture:
             return []
-        now = self._clock()
+        now = self._last_time if self._last_time is not None else self._clock()
         for finger in self._fingers.values():
             finger.ended = True
         gesture = self._classify(now, incomplete=True)
@@ -131,7 +134,7 @@ class AndroidGestureRecognizer:
         self._reset_sequence()
         return [gesture] if gesture is not None else []
 
-    # -- touch --------------------------------------------------------------------------------------
+    # -- touch ------------------------------------------------------------------------------
 
     def _frame(self, frame: TouchFrame) -> list[RecognizedGesture]:
         out: list[RecognizedGesture] = []
@@ -178,7 +181,7 @@ class AndroidGestureRecognizer:
         start = self._sequence_start
         duration = max(int(round((end_time - start) * 1000)), 0)
         meta = {"incomplete": True} if incomplete else {}
-        common = {"timestamp": start, "duration_ms": duration,
+        common: dict[str, Any] = {"timestamp": start, "duration_ms": duration,
                   "raw_event_count": self._sequence_events, "metadata": meta}
         if not fingers:
             self.recognized += 1

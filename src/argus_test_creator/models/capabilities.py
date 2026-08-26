@@ -25,6 +25,8 @@ class RecorderCapabilities(BaseModel):
     supports_keyboard: bool = False
     supports_mouse: bool = False
     supports_touch: bool = False
+    #: Physical/navigation keys (BACK, HOME, volume...) can be *observed*.
+    supports_hardware_keys: bool = False
     supports_app_lifecycle: bool = False
     # Observation the recorder can *produce*
     supports_screenshot: bool = False

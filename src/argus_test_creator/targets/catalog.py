@@ -128,8 +128,11 @@ def builtin_targets() -> list[TargetProfile]:
             argus_device_type="android",
             argus_device_name="android",
             capabilities=PLATFORM_CAPABILITIES["android"],
-            settings={"serial": "", "app_package": "", "app_activity": "", "adb_path": "adb"},
-            description="Drives an Android device through ADB (taps/keys sent by the Creator).",
+            settings={"serial": "", "app_package": "", "app_activity": "", "adb_path": "adb",
+                      "input_device": "", "invert_x": False, "invert_y": False,
+                      "swap_axes": False},
+            description="Records touches and keys on an Android device through ADB "
+                        "(`getevent`); the live view and remote can also send input.",
         ),
     ]
 

@@ -118,6 +118,20 @@ class AssertionSuggested(Event):
 
 
 @dataclass(frozen=True, kw_only=True)
+class TargetLost(Event):
+    """The target vanished mid-recording; the session paused itself and kept everything."""
+
+    session_id: str
+    message: str
+    remediation: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TargetRestored(Event):
+    session_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class RecordingFailed(Event):
     session_id: str
     operation: str
@@ -167,6 +181,7 @@ class RecordingSession:
         self._settle_ms = settle_ms
         self._sequence = 0
         self._start_capture_id: str | None = None
+        self._lost = False
         self.started_at: datetime | None = None
         self.stopped_at: datetime | None = None
 
@@ -242,6 +257,11 @@ class RecordingSession:
         with self._state_lock:
             if self._state != RecordingSessionState.PAUSED:
                 return
+            if self._lost:
+                raise RecordingError(
+                    "The target is disconnected.",
+                    remediation="Reconnect the device (Target → Reconnect) or stop the recording.",
+                )
             self._state = RecordingSessionState.RECORDING
             if self._sink is not None:
                 self._sink.resume()
@@ -377,8 +397,14 @@ class RecordingSession:
             RecordingEventType.DOUBLE_CLICK, RecordingEventType.KEY_PRESS,
             RecordingEventType.TEXT_INPUT, RecordingEventType.SCROLL,
             RecordingEventType.NAVIGATION, RecordingEventType.APP_STARTED,
-            RecordingEventType.APP_STOPPED,
+            RecordingEventType.APP_STOPPED, RecordingEventType.GESTURE,
         )
+        if event.event_type == RecordingEventType.CONNECTION_LOST:
+            self._connection_lost(event)
+            return
+        if event.event_type == RecordingEventType.CONNECTION_RESTORED:
+            self._connection_restored(event)
+            return
         if gesture_end and self._capture_after and event.capture_after is None:
             if self._settle_ms:
                 time.sleep(self._settle_ms / 1000)
@@ -398,6 +424,40 @@ class RecordingSession:
         pending.append(event)
         if gesture_end:
             self._flush_actions(pending)
+
+    def _connection_lost(self, event: RecordingEvent) -> None:
+        """Adapter reports the target vanished: pause (keep the sink open so the adapter can
+        report restoration) and preserve everything recorded so far."""
+        self._raw.append(event)
+        self._journal.append_event(event)
+        with self._state_lock:
+            if self._state != RecordingSessionState.RECORDING:
+                return
+            self._state = RecordingSessionState.PAUSED
+            self._lost = True
+        self._checkpoint()
+        _log.warning("target lost during session %s: %s", self.id, event.metadata.get("error"))
+        self._events.publish(TargetLost(
+            session_id=self.id, message=str(event.metadata.get("error") or "Target disconnected."),
+            remediation=event.metadata.get("remediation"),
+        ))
+        self._events.publish(RecordingPaused(session_id=self.id))
+
+    def _connection_restored(self, event: RecordingEvent) -> None:
+        self._raw.append(event)
+        self._journal.append_event(event)
+        with self._state_lock:
+            if not self._lost or self._state != RecordingSessionState.PAUSED:
+                return
+            self._state = RecordingSessionState.RECORDING
+            self._lost = False
+        self._checkpoint()
+        self._events.publish(TargetRestored(session_id=self.id))
+        self._events.publish(RecordingResumed(session_id=self.id))
+
+    @property
+    def target_lost(self) -> bool:
+        return self._lost
 
     def _flush_actions(self, pending: list[RecordingEvent]) -> None:
         # Normalize the whole stream (pure & cheap) and emit actions not yet seen.

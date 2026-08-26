@@ -42,6 +42,14 @@ class RecordingEventType(StrEnum):
     APP_STARTED = "app_started"
     APP_STOPPED = "app_stopped"
     SCREEN_CHANGED = "screen_changed"
+    #: A recorder that recognizes gestures itself (Android touch) emits one
+    #: semantic event per gesture; ``metadata["gesture"]`` names it
+    #: (tap/swipe/long_press/multi_touch) and ``metadata["fingers"]`` holds
+    #: multi-touch trajectories.
+    GESTURE = "gesture"
+    #: The target vanished mid-recording / came back (adapter-level facts).
+    CONNECTION_LOST = "connection_lost"
+    CONNECTION_RESTORED = "connection_restored"
     CUSTOM = "custom"
 
 
@@ -116,6 +124,7 @@ class NormalizedActionKind(StrEnum):
     LONG_PRESS = "long_press"
     DRAG = "drag"
     SWIPE = "swipe"
+    MULTI_TOUCH = "multi_touch"
     KEY = "key"
     TYPE_TEXT = "type_text"
     SCROLL = "scroll"
@@ -156,6 +165,9 @@ class NormalizedAction(BaseModel):
                 end = self.position_end
                 e = f"({end.x}, {end.y})" if end else ""
                 return f"{self.kind.value.title()} {p} → {e}"
+            case NormalizedActionKind.MULTI_TOUCH:
+                fingers = self.metadata.get("fingers") or ()
+                return f"Multi-touch ({len(fingers)} fingers)"
             case NormalizedActionKind.KEY:
                 return f"Press {self.key}"
             case NormalizedActionKind.TYPE_TEXT:
