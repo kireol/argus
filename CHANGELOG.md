@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.3] - 2026-08-26
+
+### Added
+- `argus --help` ends with a **Typical commands** section (e.g.
+  `argus run --config config/2360x1300.yaml --no-logs --all --save-comparisons`);
+  the same list is in `argus/docs/cli.md`.
+
 ## [1.2.2] - 2026-08-26
 
 ### Added

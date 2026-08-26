@@ -34,9 +34,32 @@ from argus.reporting.alerts import Alert, AlertSeverity, ConsoleAlertProvider
 
 _RUN_PANEL = "Run options"
 
+_TYPICAL_COMMANDS = """\
+Typical commands:
+
+  argus run --config config/2360x1300.yaml --no-logs --all --save-comparisons
+      Run every test against a config; hide INFO log lines; keep actual/expected/diff
+      images in the HTML report.
+  argus run --tag smoke --continue-on-failure
+      Run the smoke-tagged tests and keep going after failures.
+  argus run -t MOV-001 -v
+      Run one test with DEBUG logging.
+  argus run --config config/fake.yaml
+      Try the example suite on the built-in fake devices (no hardware).
+  argus validate
+      Check the installation, backend and every configured device.
+  argus list --feature Movies
+      List tests for one feature.
+  argus ci run --suite pr
+      CI/CD-native run of a named suite (see `argus ci run --help`).
+  argus stress --scenario examples/stress/checkout-chaos.yaml
+      Monkey / stress / chaos run with a reproducible seed (see `argus stress --help`).
+"""
+
 app = typer.Typer(
     name="argus",
     help="Argus — Universal Cross-Platform Functional & Visual Testing Framework.",
+    epilog=_TYPICAL_COMMANDS,
     no_args_is_help=True,
     add_completion=False,
     pretty_exceptions_show_locals=False,
