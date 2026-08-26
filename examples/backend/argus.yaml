@@ -1,0 +1,14 @@
+# Argus Demo backend example. Start the server first:
+#     python examples/backend/server.py
+# then, from the repository root:
+#     argus run --config examples/backend/argus.yaml
+backend:
+  base_url: http://127.0.0.1:8765
+  state_endpoint: /api/state
+  health_endpoint: /health
+
+devices: {}
+
+test_paths: [examples/backend/tests]
+results:
+  retain_on_success: false

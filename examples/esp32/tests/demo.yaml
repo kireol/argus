@@ -1,0 +1,150 @@
+# Argus Demo tests for the ESP32 example. Every test resets the board first
+# (device.reset reboots the firmware) so tests are independent of run order;
+# the counter, screen, and theme all start clean (0 / home / light) after a
+# reset because they are firmware globals reinitialised by setup().
+#
+# ESP32 has no OCR-friendly screen (128x64 mono, tiny font), so unlike the
+# other examples this suite uses image_present with a small reference crop
+# for the title, pixel_matches for the theme swatch, and
+# instrumentation_value/application_state + log_contains for everything
+# else, instead of text_present.
+
+features:
+  Demo:
+    setup:
+      - action: device.reset
+    # No teardown: Esp32Adapter.stop_application() is unsupported (a board
+    # cannot stop its own firmware) — see docs/esp32.md's adapter table.
+
+tests:
+  - id: ESP-001
+    name: App reports ready on boot
+    description: >
+      After a reset, the firmware's serial log includes "App ready" once the
+      Argus agent is registered and the home screen has been drawn.
+    feature: Demo
+    tags: [smoke]
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: verify
+        condition:
+          type: log_contains
+          text: "App ready"
+
+  - id: ESP-002
+    name: Instrumentation reports the home screen
+    description: >
+      GET /test/status (served by the firmware agent over serial) reports
+      screen: home right after boot.
+    feature: Demo
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: screen
+          equals: home
+
+  - id: ESP-003
+    name: Title is visible on the home screen
+    description: >
+      The "ARGUS" title (Adafruit GFX 5x7 font, text size 2, drawn at 0,0)
+      matches the committed reference crop images/title.png.
+    feature: Demo
+    tags: [smoke, visual]
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: verify
+        condition:
+          type: image_present
+          image: title.png
+
+  - id: ESP-004
+    name: BTN_OK increments the counter on the home screen
+    description: >
+      Pressing BTN_OK on the home screen increments the counter and logs
+      Counter: N.
+    feature: Demo
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: BTN_OK
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Counter: 1"
+
+  - id: ESP-005
+    name: BTN_RIGHT opens Settings
+    feature: Demo
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: BTN_RIGHT
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+
+  - id: ESP-006
+    name: BTN_OK toggles the dark theme on Settings
+    description: >
+      Toggling the theme on the Settings screen turns the swatch at
+      (100,50) 24x10 hollow; pixel (112,55) goes from white (light theme,
+      the swatch is filled) to black (dark theme, the swatch is only an
+      outline).
+    feature: Demo
+    tags: [visual]
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: BTN_RIGHT
+      - action: device.key
+        key: BTN_OK
+      - action: verify
+        condition:
+          type: pixel_matches
+          x: 112
+          y: 55
+          color: "#000000"
+
+  - id: ESP-007
+    name: device.reset returns the app to a clean state
+    description: >
+      Resetting the board (a firmware reboot) returns the counter to 0.
+    feature: Demo
+    platforms: [esp32]
+    setup:
+      - action: device.reset
+      - action: device.key
+        key: BTN_OK
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+    steps:
+      - action: device.reset
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 0

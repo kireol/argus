@@ -1,0 +1,305 @@
+# Argus Demo desktop example tests (DSK-001..DSK-009).
+#
+# These drive examples/desktop/app.py (a tkinter window at 800x600+0+0)
+# through the `desktop` adapter with device.tap/device.key. Every tap and
+# pixel coordinate is a `${var}` reference resolved from the `variables:`
+# block in whichever config file is active (examples/desktop/argus.yaml for
+# a 1x/standard-DPI display, examples/desktop/argus.retina.yaml for 2x) --
+# see that file's COORDINATE UNITS comment for why: the desktop adapter
+# works in screenshot pixels, not tkinter's logical points, and the two
+# differ on a HiDPI display. Never hardcode a coordinate directly in this
+# file; add/adjust it in `variables:` instead so both configs stay in sync.
+#
+# Unlike the web/browser example, the desktop adapter surfaces
+# stdout/stderr as logs but this suite does not assert on them
+# (log_contains); everything is driven and asserted through device.tap,
+# screenshots (text_present/pixel_matches) and instrumentation/application
+# state instead. See docs/test-authoring.md.
+#
+# The `desktop` adapter does not auto-launch the app on connect (only
+# probes the display), so the feature-level setup below explicitly issues
+# device.start; teardown stops the app and resets the backend. Individual
+# tests that mutate state (counter, theme, screen) additionally issue
+# device.reset in their own setup so each test passes independently of
+# run order (see "Isolation" in docs/test-authoring.md) -- device.reset
+# relaunches the app fresh (counter 0, theme light, screen home) since no
+# reset_command is configured.
+
+features:
+  Demo:
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.start
+    teardown:
+      - action: device.stop
+      - action: backend.post
+        endpoint: /api/reset
+
+tests:
+
+  - id: DSK-001
+    name: App starts and title is visible
+    description: The window launches and shows the "Argus Demo" title.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: verify
+        condition:
+          type: text_present
+          text: "Argus Demo"
+
+  - id: DSK-002
+    name: Instrumentation reports ready on home
+    description: The instrumentation status document is ready and on the home screen at startup.
+    feature: Demo
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: verify
+        condition:
+          all:
+            - type: instrumentation_value
+              key: ready
+              equals: true
+            - type: instrumentation_value
+              key: screen
+              equals: home
+
+  - id: DSK-003
+    name: "+ increments the counter"
+    description: Tapping the "+" button increments the on-screen counter and application state.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+
+  - id: DSK-004
+    name: Counter increments three times
+    description: Tapping "+" three times brings the counter to 3.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 3"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 3
+
+  - id: DSK-005
+    name: Navigate to Settings
+    description: Tapping "Settings" switches to the settings screen.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_settings_x}
+        y: ${tap_settings_y}
+      - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
+        condition:
+          type: text_present
+          text: "Dark theme"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+
+  - id: DSK-006
+    name: Back returns home and keeps the counter
+    description: >
+      Navigating to Settings and back to Home preserves the counter value
+      accumulated on Home.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: device.tap
+        x: ${tap_settings_x}
+        y: ${tap_settings_y}
+      - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
+        condition:
+          type: text_present
+          text: "Dark theme"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: device.tap
+        x: ${tap_back_x}
+        y: ${tap_back_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 5s
+        poll_interval: 250ms
+
+  - id: DSK-007
+    name: Dark theme changes the swatch colour
+    description: >
+      Toggling "Dark theme" in Settings switches the swatch to purple
+      (#8e44ad); teardown restores the light theme. The swatch canvas is
+      only present on the Home screen (see app.py), so this test taps
+      Back after toggling and before reading the pixel -- reading it while
+      Settings is raised would sample the Settings background instead.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_settings_x}
+        y: ${tap_settings_y}
+      - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
+        condition:
+          type: text_present
+          text: "Dark theme"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: device.tap
+        x: ${tap_dark_toggle_x}
+        y: ${tap_dark_toggle_y}
+      - action: device.tap
+        x: ${tap_back_x}
+        y: ${tap_back_y}
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: home
+        timeout: 5s
+        poll_interval: 250ms
+      - action: wait_until
+        condition:
+          type: pixel_matches
+          x: ${swatch_pixel_x}
+          y: ${swatch_pixel_y}
+          color: "#8e44ad"
+        timeout: 5s
+        poll_interval: 250ms
+    teardown:
+      - action: device.reset
+
+  - id: DSK-008
+    name: Backend drives the counter
+    description: backend.set updates the counter and the app picks it up via polling.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: backend.set
+        data:
+          counter: 42
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 42"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 42
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+  - id: DSK-009
+    name: Reset returns the app to a clean state
+    description: >
+      device.reset relaunches the app; with the backend also reset first,
+      the counter comes back up at 0.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [desktop]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: ${tap_plus_x}
+        y: ${tap_plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 5s
+        poll_interval: 250ms
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 0"
+        timeout: 5s
+        poll_interval: 250ms
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light/dark are applied by MainActivity at runtime (background, swatch,
+         text colours), so the app uses a single fixed base theme. -->
+    <style name="Theme.ArgusDemo" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
