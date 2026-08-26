@@ -24,6 +24,8 @@ class RunStatus(StrEnum):
     STOPPED = "stopped"
     PREFLIGHT_FAILED = "preflight_failed"
     SETUP_FAILED = "setup_failed"
+    #: The run was interrupted (SIGINT/SIGTERM or a cancellation token).
+    CANCELLED = "cancelled"
 
 
 class VerificationResult(BaseModel):
@@ -51,6 +53,17 @@ class StepResult(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class AttemptRecord(BaseModel):
+    """One execution attempt of a test (retries keep every attempt's evidence)."""
+
+    attempt: int
+    status: TestStatus
+    duration: float = 0.0
+    failure_category: str | None = None
+    error: str | None = None
+    artifact_dir: str | None = None
+
+
 class TestResult(BaseModel):
     """Outcome of a single test."""
 
@@ -65,6 +78,12 @@ class TestResult(BaseModel):
     error: str | None = None
     failure_category: str | None = None
     attempts: int = 1
+    #: True when the test failed at least once and then passed on a retry.
+    flaky: bool = False
+    #: Failure category of the first attempt when a retry happened.
+    initial_failure: str | None = None
+    #: Every attempt, oldest first (empty when the test ran exactly once).
+    attempt_history: list[AttemptRecord] = Field(default_factory=list)
     artifact_dir: str | None = None
     instrumentation_state: dict[str, Any] | None = None
 

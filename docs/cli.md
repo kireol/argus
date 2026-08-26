@@ -74,6 +74,29 @@ Reports land in `results/<timestamp>/`: `report.json`, `junit.xml`,
 `actual` / `expected` / `diff` / screenshot images when present), plus per-test
 artifact directories for failures.
 
+## argus ci run
+
+CI/CD-native execution over the same engine: provider detection (GitHub,
+GitLab, Jenkins, Azure, generic, local), named suites, retry of transient
+failures, quality gates, a deterministic `argus-results/` directory
+(`report.json`, `junit.xml`, `report.html`, metadata, evidence), and GitHub
+job summaries/annotations.
+
+```bash
+argus ci run                                # every test, provider auto-detected
+argus ci run --suite pr                     # a suite from ci.suites
+argus ci run --suite pr --tag player        # CLI selectors narrow the suite (AND)
+argus ci run --suite nightly --workers 2    # parallel workers (device-partitioned)
+argus ci run --retry 2 --fail-fast          # overrides for ci.retry / ci.execution
+argus ci run --dry-run                      # resolve + validate, execute nothing
+argus ci run --provider generic --no-report # skip provider publishing
+argus ci run -o build/argus --no-artifacts  # custom output dir / no output dir
+```
+
+Exit codes: `0` success · `1` test failure · `2` configuration · `3`
+environment · `4` test definition · `5` reporting · `6` policy · `7` internal
+· `8` cancelled. Full reference: [ci-cd.md](ci-cd.md).
+
 ## argus validate
 
 Environment diagnosis, section by section, with

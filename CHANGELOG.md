@@ -7,6 +7,28 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- First-class CI/CD integration: `argus ci run` orchestrates the existing
+  engine with CI provider detection (GitHub Actions, GitLab CI, Jenkins,
+  Azure Pipelines, generic `CI=true`, local), named suites (`ci.suites`, with
+  `extends`), run-level retry of transient failures with per-attempt evidence
+  and flaky detection, structured failure classification, a provider-neutral
+  quality-policy engine (`failures`, `visual_regression`, `known_failure`,
+  `flaky`, `required`), a deterministic `argus-results/` directory
+  (`report.json` schema v1, `junit.xml` with CI properties, `report.html`
+  with context/badges, `metadata/{ci,git,environment,preflight}.json`, DEBUG
+  run log), GitHub job summaries and annotations, device-partitioned parallel
+  workers (`--workers`, `sequential`/`balanced`), cooperative cancellation
+  (SIGINT/SIGTERM → `status: cancelled`, `not_run` tests, exit 8), and a
+  stable exit-code contract (0–8). A thin composite GitHub Action
+  (`action.yml`, usable as `kireol/argus@v1`), `examples/ci/`, and
+  `docs/ci-cd.md`.
+- Engine: `RunOptions.retry` (run-level `RetryOverride`), `RunOptions.cancel`
+  (cancellation token → `RunStatus.CANCELLED`), `RunOptions.skip_setup`,
+  `RunOptions.results_dir`; `TestResult.flaky` / `initial_failure` /
+  `attempt_history`; retries write to `<id>_attemptN/` instead of
+  overwriting evidence. `write_junit_report`/`write_html_report` accept
+  optional properties, header fields, notices and badges. `FakeDevice`
+  `fail_first_screenshots` option for exercising retries.
 - `examples/`: nine complete, buildable sample apps ("Argus Demo"), one per
   supported target (backend, web, desktop, android, ios, tvos, roku, esp32,
   yocto), each with its own `argus.yaml`, `tests/demo.yaml` suite, and
