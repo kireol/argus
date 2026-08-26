@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from PIL import Image as PILImage
 
@@ -95,7 +96,7 @@ class TextPresentVerifier(_TextVerifierBase):
             message=(
                 f"Text {needle!r} " + ("found" if passed else "not found") + " on screen"
             ),
-            details={"expected_text": needle, "extracted_text": extracted[:1000]},
+            details=_details(expectation, expected_text=needle, extracted_text=extracted[:1000]),
         )
 
 
@@ -118,5 +119,15 @@ class TextAbsentVerifier(_TextVerifierBase):
                 f"Text {needle!r} "
                 + ("absent as expected" if passed else "unexpectedly present")
             ),
-            details={"expected_absent": needle, "extracted_text": extracted[:1000]},
+            details=_details(expectation, expected_absent=needle,
+                             extracted_text=extracted[:1000]),
         )
+
+
+def _details(expectation: Expectation, **fields: Any) -> dict[str, Any]:
+    """Verification details; records the OCR region so evidence can highlight it."""
+    region = expectation.region
+    if isinstance(region, Region):
+        fields["region"] = {"x": region.x, "y": region.y, "width": region.width,
+                            "height": region.height}
+    return fields
