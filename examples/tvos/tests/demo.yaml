@@ -61,7 +61,7 @@ tests:
       The in-app instrumentation listener (DEBUG builds only, port 8085)
       serves the standard status document and the demo state.
     feature: Demo
-    tags: [instrumentation]
+    tags: []
     platforms: [tvos_sim]
     setup:
       - action: device.reset

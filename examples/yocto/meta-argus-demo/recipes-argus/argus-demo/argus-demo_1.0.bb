@@ -24,7 +24,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "argus-demo.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
-RDEPENDS:${PN} = "python3-pygame python3-core"
+RDEPENDS:${PN} = "python3-pygame python3-core python3-json python3-netserver python3-threading python3-io python3-argparse"
 
 do_install() {
     install -d ${D}${bindir}

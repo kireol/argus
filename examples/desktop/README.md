@@ -21,9 +21,10 @@ All commands below are run **from the repository root**.
 - Know your display's pixel scale (1x/standard-DPI vs 2x/Retina/HiDPI) —
   see "Measure your display" below — and pick `argus.yaml` or
   `argus.retina.yaml` accordingly. **The committed defaults in `argus.yaml`
-  assume a 1x display and were verified on one; `argus.retina.yaml`'s
-  doubled values were derived by calculation, not verified on real Retina
-  hardware.**
+  are derived from `app.py`'s 800×600 geometry for a 1x display, but this
+  has not been confirmed by a passing run — see "Troubleshooting" below;
+  `argus.retina.yaml`'s doubled values were derived by calculation and
+  likewise not verified on real Retina hardware.**
 - **macOS only:** grant your terminal app **Screen Recording** and
   **Accessibility** permission (System Settings → Privacy & Security), then
   restart the terminal. Without Screen Recording, `pyautogui.screenshot()`
@@ -105,12 +106,14 @@ PY
 
 Both files declare the same coordinates once, in a `variables:` block, so
 switching displays is a matter of pointing `--config` at the other file —
-no per-test editing. **The 1x values in `argus.yaml` were verified on a
-real 1x display (see "Run the tests" below); the 2x values in
-`argus.retina.yaml` were derived by doubling them and have not been
-verified against real Retina hardware** — re-run the measurement above
-after a run to confirm, and adjust `argus.retina.yaml`'s `variables:`/
-`region` if your Retina display's actual ratio differs from exactly 2.0.
+no per-test editing. **The 1x values in `argus.yaml` are derived from
+`app.py`'s 800×600 geometry, not confirmed by a passing run — the run
+stopped at the Screen Recording pre-flight before any test executed (see
+"Troubleshooting" below); the 2x values in `argus.retina.yaml` were
+derived by doubling them and have likewise not been verified against real
+Retina hardware** — re-run the measurement above after a run to confirm,
+and adjust `argus.retina.yaml`'s `variables:`/`region` if your Retina
+display's actual ratio differs from exactly 2.0.
 
 ## Run the tests
 

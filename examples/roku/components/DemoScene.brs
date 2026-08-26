@@ -53,13 +53,16 @@ sub showSettings()
 end sub
 
 sub applyTheme()
+    ' Colours are RRGGBBAA (full "FF" alpha) rather than RRGGBB so the value
+    ' Argus reads back via pixel_matches always includes an explicit,
+    ' non-implicit alpha channel -- matches DemoScene.xml's swatch/background.
     if m.theme = "dark"
-        m.background.color = "#1e1e2e"
-        m.swatch.color = "#8e44ad"
-        textColor = "#ffffff"
+        m.background.color = "#1e1e2eFF"
+        m.swatch.color = "#8e44adFF"
+        textColor = "#ffffffFF"
     else
-        m.background.color = "#ffffff"
-        m.swatch.color = "#2ecc71"
+        m.background.color = "#ffffffFF"
+        m.swatch.color = "#2ecc71FF"
         textColor = "#000000"
     end if
 

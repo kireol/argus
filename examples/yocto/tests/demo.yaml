@@ -344,7 +344,7 @@ tests:
       Captures the Home screen via the /test/screen instrumentation endpoint
       and saves it as a test artifact.
     feature: Demo
-    tags: [visual]
+    tags: []
     platforms: [yocto]
     setup:
       - action: device.reset

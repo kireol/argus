@@ -146,7 +146,7 @@ tests:
       Verify OK on Settings switches to the dark theme, recolouring the
       swatch to purple and logging the change.
     feature: Demo
-    tags: [visual]
+    tags: [visual, ocr]
     platforms: [roku]
     setup:
       - action: device.reset

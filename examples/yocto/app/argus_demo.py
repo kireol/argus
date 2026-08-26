@@ -82,7 +82,7 @@ class ArgusDemoApp:
         self.state: dict[str, Any] = {"counter": 0, "theme": "light", "screen": "home"}
         self.ready = False
 
-        self.input_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
+        self.input_queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self.frame_lock = threading.Lock()
         self.latest_frame: bytes | None = None
 
@@ -220,7 +220,9 @@ class ArgusDemoApp:
         else:
             display_flags = pygame.FULLSCREEN
             info = pygame.display.Info()
-            self._window_size = (info.current_w, info.current_h) if info.current_w else (WIDTH, HEIGHT)
+            self._window_size = (
+                (info.current_w, info.current_h) if info.current_w else (WIDTH, HEIGHT)
+            )
 
         display_surface = pygame.display.set_mode(self._window_size, display_flags)
         render_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -347,7 +349,7 @@ def _make_handler(app: ArgusDemoApp) -> type[BaseHTTPRequestHandler]:
             self._send_json(200, {"ok": True})
 
         def log_message(self, fmt: str, *args: Any) -> None:  # quieter console
-            print("%s %s" % (self.command, self.path), flush=True)
+            print(f"{self.command} {self.path}", flush=True)
 
     return InstrumentationHandler
 

@@ -137,9 +137,11 @@ tests:
         x: ${tap_settings_x}
         y: ${tap_settings_y}
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 5s
         poll_interval: 250ms
       - action: verify
@@ -172,9 +174,11 @@ tests:
         x: ${tap_settings_x}
         y: ${tap_settings_y}
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 5s
         poll_interval: 250ms
       - action: device.tap
@@ -196,7 +200,7 @@ tests:
       Back after toggling and before reading the pixel -- reading it while
       Settings is raised would sample the Settings background instead.
     feature: Demo
-    tags: [visual]
+    tags: [visual, ocr]
     platforms: [desktop]
     setup:
       - action: device.reset
@@ -205,9 +209,11 @@ tests:
         x: ${tap_settings_x}
         y: ${tap_settings_y}
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 5s
         poll_interval: 250ms
       - action: device.tap
