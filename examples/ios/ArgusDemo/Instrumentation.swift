@@ -12,9 +12,21 @@ final class InstrumentationState: @unchecked Sendable {
     static let shared = InstrumentationState()
 
     private let lock = NSLock()
+    private var ready = false
     private var counter = 0
     private var theme = Theme.light.rawValue
     private var screen = Screen.home.rawValue
+
+    /// Flips `ready` to true. Called from `AppModel.start()`, i.e. once the UI
+    /// is on screen and interactive — not when the server starts listening.
+    /// `ready` must mean "fully initialized", so between `App.init()` (which
+    /// starts the listener) and the first frame the endpoints answer honestly
+    /// with `ready: false`.
+    func markReady() {
+        lock.lock()
+        defer { lock.unlock() }
+        ready = true
+    }
 
     func update(counter: Int, theme: String, screen: String) {
         lock.lock()
@@ -31,7 +43,7 @@ final class InstrumentationState: @unchecked Sendable {
         return [
             "application": "ArgusDemo",
             "version": "1.0.0",
-            "ready": true,
+            "ready": ready,
             "screen": screen,
             "capabilities": ["status", "state"],
         ]
@@ -81,7 +93,7 @@ final class InstrumentationServer: @unchecked Sendable {
             guard let self else { return }
             switch state {
             case .ready:
-                self.logger.info("Instrumentation on port \(self.port.rawValue, privacy: .public)")
+                self.logger.notice("Instrumentation on port \(self.port.rawValue, privacy: .public)")
             case .failed(let error):
                 self.logger.error("Instrumentation failed: \(error.localizedDescription, privacy: .public)")
             default:
