@@ -1,0 +1,168 @@
+# Argus GitHub Action — a thin wrapper around `argus ci run`.
+#
+# Usage (from any repository):
+#
+#     - uses: kireol/argus@v1
+#       with:
+#         suite: pr
+#
+# The action installs Argus from this repository, runs `argus ci run` with the
+# inputs below, uploads `argus-results/` as a workflow artifact, and exposes the
+# run status and report paths as outputs. All test-execution logic lives in the
+# Argus CLI; this file only wires inputs to flags. It is designed to be moved
+# verbatim into a standalone `kireol/argus-action` repository.
+name: Argus CI
+description: Run Argus functional & visual tests in CI with job summaries, annotations, and artifacts.
+author: kireol
+branding:
+  icon: eye
+  color: purple
+
+inputs:
+  suite:
+    description: Named suite from `ci.suites` in the Argus configuration.
+    required: false
+    default: ""
+  config:
+    description: "Path to the Argus configuration file (default: repository/user config)."
+    required: false
+    default: ""
+  provider:
+    description: CI provider override (auto, github, generic, ...).
+    required: false
+    default: "github"
+  workers:
+    description: Number of parallel workers (overrides `ci.execution.workers`).
+    required: false
+    default: ""
+  retry:
+    description: Total attempts per test for transient failures (overrides `ci.retry`).
+    required: false
+    default: ""
+  tags:
+    description: Space-separated tags that narrow the suite (`--tag` each).
+    required: false
+    default: ""
+  platforms:
+    description: Space-separated platforms that narrow the suite (`--platform` each).
+    required: false
+    default: ""
+  output-dir:
+    description: Artifact directory written by Argus.
+    required: false
+    default: "argus-results"
+  upload-artifacts:
+    description: Upload the artifact directory with actions/upload-artifact.
+    required: false
+    default: "true"
+  artifact-name:
+    description: Name of the uploaded workflow artifact.
+    required: false
+    default: "argus-results"
+  extra-args:
+    description: Additional arguments appended to `argus ci run`.
+    required: false
+    default: ""
+  python-version:
+    description: Python version to set up (skip setup when empty).
+    required: false
+    default: "3.12"
+  install:
+    description: Install Argus from the action's repository before running (set false if already installed).
+    required: false
+    default: "true"
+  extras:
+    description: 'Argus extras to install, e.g. "browser" or "browser,ocr".'
+    required: false
+    default: ""
+
+outputs:
+  status:
+    description: "Run status from report.json (passed, failed, error, cancelled, not_run)."
+    value: ${{ steps.run.outputs.status }}
+  exit-code:
+    description: Exit code of `argus ci run` (see docs/ci-cd.md for the contract).
+    value: ${{ steps.run.outputs.exit-code }}
+  report-json:
+    description: Path to report.json.
+    value: ${{ steps.run.outputs.report-json }}
+  junit-xml:
+    description: Path to junit.xml.
+    value: ${{ steps.run.outputs.junit-xml }}
+  report-html:
+    description: Path to report.html.
+    value: ${{ steps.run.outputs.report-html }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      if: inputs.python-version != ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Argus
+      if: inputs.install == 'true'
+      shell: bash
+      env:
+        ARGUS_ACTION_PATH: ${{ github.action_path }}
+        ARGUS_EXTRAS: ${{ inputs.extras }}
+      run: |
+        set -euo pipefail
+        if [ -n "$ARGUS_EXTRAS" ]; then
+          python -m pip install -q "${ARGUS_ACTION_PATH}[${ARGUS_EXTRAS}]"
+        else
+          python -m pip install -q "${ARGUS_ACTION_PATH}"
+        fi
+        argus version
+
+    - name: Run Argus
+      id: run
+      shell: bash
+      env:
+        ARGUS_SUITE: ${{ inputs.suite }}
+        ARGUS_CONFIG: ${{ inputs.config }}
+        ARGUS_PROVIDER: ${{ inputs.provider }}
+        ARGUS_WORKERS: ${{ inputs.workers }}
+        ARGUS_RETRY: ${{ inputs.retry }}
+        ARGUS_TAGS: ${{ inputs.tags }}
+        ARGUS_PLATFORMS: ${{ inputs.platforms }}
+        ARGUS_OUTPUT_DIR: ${{ inputs.output-dir }}
+        ARGUS_EXTRA_ARGS: ${{ inputs.extra-args }}
+      run: |
+        set -uo pipefail
+        args=(ci run --output-dir "$ARGUS_OUTPUT_DIR")
+        [ -n "$ARGUS_SUITE" ] && args+=(--suite "$ARGUS_SUITE")
+        [ -n "$ARGUS_CONFIG" ] && args+=(--config "$ARGUS_CONFIG")
+        [ -n "$ARGUS_PROVIDER" ] && args+=(--provider "$ARGUS_PROVIDER")
+        [ -n "$ARGUS_WORKERS" ] && args+=(--workers "$ARGUS_WORKERS")
+        [ -n "$ARGUS_RETRY" ] && args+=(--retry "$ARGUS_RETRY")
+        for tag in $ARGUS_TAGS; do args+=(--tag "$tag"); done
+        for platform in $ARGUS_PLATFORMS; do args+=(--platform "$platform"); done
+        # extra-args is split on whitespace deliberately (documented).
+        for extra in $ARGUS_EXTRA_ARGS; do args+=("$extra"); done
+
+        set +e
+        argus "${args[@]}"
+        code=$?
+        set -e
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "report-json=$ARGUS_OUTPUT_DIR/report.json" >> "$GITHUB_OUTPUT"
+        echo "junit-xml=$ARGUS_OUTPUT_DIR/junit.xml" >> "$GITHUB_OUTPUT"
+        echo "report-html=$ARGUS_OUTPUT_DIR/report.html" >> "$GITHUB_OUTPUT"
+        status="unknown"
+        if [ -f "$ARGUS_OUTPUT_DIR/report.json" ]; then
+          status=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['run']['status'])" "$ARGUS_OUTPUT_DIR/report.json" 2>/dev/null || echo unknown)
+        fi
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        exit "$code"
+
+    - name: Upload artifacts
+      if: always() && inputs.upload-artifacts == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.output-dir }}
+        if-no-files-found: ignore
