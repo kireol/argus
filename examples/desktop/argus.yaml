@@ -1,9 +1,22 @@
-# Argus Demo desktop example. Start the example backend first:
+# Argus Demo desktop example -- 1x / standard-DPI display (default). Start
+# the example backend first:
 #     python examples/backend/server.py
 # then, from the repository root, with ARGUS_PYTHON pointing at a Python
 # that has "argus[desktop,ocr]" installed (see README.md):
 #     export ARGUS_PYTHON=$(pwd)/.venv/bin/python
 #     argus run --config examples/desktop/argus.yaml
+#
+# COORDINATE UNITS: the desktop adapter's `region` and every device.tap /
+# pixel_matches coordinate are SCREENSHOT PIXELS (the raw display capture
+# pyautogui takes), not tkinter's logical points -- see docs/desktop.md and
+# src/argus/adapters/desktop.py (`screenshot()` crops `region` unconverted;
+# `_to_logical()` divides tap coordinates by
+# `ratio = screenshot_width / logical_width`). On a 1x/standard-DPI display
+# those are the same numbers as the app's own 800x600 tkinter geometry,
+# which is what this file assumes. On a 2x/Retina display (ratio 2, common
+# on Apple Silicon Macs) they are NOT -- use examples/desktop/argus.retina.yaml
+# instead. See README.md "Measure your display" to tell which one you need;
+# the values below were verified on a 1x display only.
 backend:
   base_url: http://127.0.0.1:8765
   state_endpoint: /api/state
@@ -15,14 +28,28 @@ devices:
     command: ${ARGUS_PYTHON:-python3}
     args: [examples/desktop/app.py]
     startup_wait: 2s
-    # [0, 0, 800, 600] matches the window's own geometry (800x600+0+0). On
-    # macOS the global menu bar overlaps the top of the primary display, so
-    # if screenshots look shifted, crop below it instead:
-    #   region: [0, 25, 800, 600]
-    # See README.md "Troubleshooting" for details.
+    # Screenshot pixels; must match the scale used for `variables:` below.
+    # 1x (this file): [0, 0, 800, 600]. 2x/Retina: [0, 0, 1600, 1200]
+    # (examples/desktop/argus.retina.yaml).
     region: [0, 0, 800, 600]
     instrumentation:
       base_url: http://127.0.0.1:8085
+
+# Tap/pixel coordinates used by examples/desktop/tests/demo.yaml (screenshot
+# pixels -- see COORDINATE UNITS above), hoisted here so the whole suite can
+# be retargeted at a different display scale by pointing --config at a
+# different file (argus.retina.yaml) instead of editing every test.
+variables:
+  tap_plus_x: 400 # "+" button, home screen
+  tap_plus_y: 300
+  tap_settings_x: 400 # "Settings" button, home screen
+  tap_settings_y: 400
+  tap_dark_toggle_x: 400 # "Dark theme" checkbutton, settings screen
+  tap_dark_toggle_y: 250
+  tap_back_x: 400 # "Back" button, settings screen
+  tap_back_y: 400
+  swatch_pixel_x: 680 # inside the colour swatch canvas, home screen
+  swatch_pixel_y: 100
 
 test_paths: [examples/desktop/tests]
 results:

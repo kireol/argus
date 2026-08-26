@@ -14,11 +14,17 @@ Instrumentation (an in-process ThreadingHTTPServer, daemon thread) listens
 on http://127.0.0.1:8085:
 
     GET /test/status  -> {"application": "ArgusDemo", "version": "1.0.0",
-                           "ready": true, "screen": "home"|"settings",
+                           "ready": true|false, "screen": "home"|"settings",
                            "capabilities": ["status", "state"]}
     GET /test/state   -> {"counter": N, "theme": "light"|"dark",
                            "screen": "home"|"settings"}
     GET /test/health  -> 200 {"ok": true}
+
+The instrumentation server thread starts before the tkinter window exists,
+so "ready" starts false and only flips to true once the window has been
+built and an initial idle pass of the event loop has run (see
+DemoApp._mark_ready / AppState.update) -- it is a real readiness signal,
+not a constant.
 
 Unless --no-backend is given, the app polls the example backend
 (examples/backend/server.py, http://127.0.0.1:8765) every 500ms via
@@ -46,6 +52,10 @@ INSTRUMENTATION_HOST = "127.0.0.1"
 INSTRUMENTATION_PORT = 8085
 BACKEND_BASE_URL = "http://127.0.0.1:8765"
 POLL_INTERVAL_MS = 500
+# urlopen() below is a synchronous, blocking call made from inside a tkinter
+# `after()` callback, i.e. on the Tk main loop's own thread: every poll/post
+# can stall all UI event processing (clicks, redraws) for up to this long
+# if the backend is slow or the connection hangs before timing out.
 BACKEND_TIMEOUT_S = 0.3
 
 LIGHT_BG = "#ffffff"
@@ -57,17 +67,33 @@ DARK_SWATCH = "#8e44ad"
 
 
 class AppState:
-    """Shared, lock-protected state read by both tkinter and the HTTP thread."""
+    """Shared state read by both tkinter (the sole writer) and the HTTP
+    instrumentation server's worker threads (readers). Every field access
+    from another thread goes through a lock-protected method -- writers use
+    ``update()``, readers use ``snapshot()``/``is_ready()``.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self.counter = 0
         self.theme = "light"
         self.screen = "home"
+        self.ready = False
+
+    def update(self, **fields: object) -> None:
+        """Lock-protected multi-field write; every mutation goes through this."""
+        with self._lock:
+            for key, value in fields.items():
+                setattr(self, key, value)
 
     def snapshot(self) -> dict:
+        """The GET /test/state shape: counter/theme/screen."""
         with self._lock:
             return {"counter": self.counter, "theme": self.theme, "screen": self.screen}
+
+    def is_ready(self) -> bool:
+        with self._lock:
+            return self.ready
 
 
 def make_instrumentation_handler(state: AppState) -> type[BaseHTTPRequestHandler]:
@@ -88,7 +114,7 @@ def make_instrumentation_handler(state: AppState) -> type[BaseHTTPRequestHandler
                     {
                         "application": APP_NAME,
                         "version": VERSION,
-                        "ready": True,
+                        "ready": state.is_ready(),
                         "screen": snap["screen"],
                         "capabilities": ["status", "state"],
                     },
@@ -181,10 +207,18 @@ class DemoApp:
         print("App ready", flush=True)
         print("Screen: home", flush=True)
 
+        # "ready" (served over instrumentation) only flips true once the window
+        # has actually been built and the event loop has had an idle pass,
+        # rather than being true from process start.
+        self.root.after_idle(self._mark_ready)
+
         if self.use_backend:
             self.root.after(POLL_INTERVAL_MS, self._poll_backend)
 
     # -- rendering ------------------------------------------------------------------------
+
+    def _mark_ready(self) -> None:
+        self.state.update(ready=True)
 
     def _render_counter(self) -> None:
         self.count_label.configure(text=f"Count: {self.state.counter}")
@@ -213,28 +247,34 @@ class DemoApp:
 
     def show_home(self) -> None:
         if self.state.screen != "home":
-            self.state.screen = "home"
+            self.state.update(screen="home")
             print("Screen: home", flush=True)
         self.home_frame.tkraise()
 
     def show_settings(self) -> None:
         if self.state.screen != "settings":
-            self.state.screen = "settings"
+            self.state.update(screen="settings")
             print("Screen: settings", flush=True)
         self.settings_frame.tkraise()
 
     # -- actions --------------------------------------------------------------------------
 
     def increment(self) -> None:
-        self.state.counter += 1
+        # Only the Tk main thread ever writes `counter` (this method,
+        # toggle_theme, and _apply_backend_state all run on it), so reading
+        # the previous value unlocked here is safe; `update()` still takes
+        # the lock so the HTTP threads never observe a half-written value.
+        counter = self.state.counter + 1
+        self.state.update(counter=counter)
         self._render_counter()
-        print(f"Counter: {self.state.counter}", flush=True)
-        self._post_backend({"counter": self.state.counter})
+        print(f"Counter: {counter}", flush=True)
+        self._post_backend({"counter": counter})
 
     def toggle_theme(self) -> None:
-        self.state.theme = "dark" if self.dark_var.get() else "light"
+        theme = "dark" if self.dark_var.get() else "light"
+        self.state.update(theme=theme)
         self._apply_theme()
-        self._post_backend({"theme": self.state.theme})
+        self._post_backend({"theme": theme})
 
     def quit(self) -> None:
         self.root.destroy()
@@ -271,13 +311,13 @@ class DemoApp:
     def _apply_backend_state(self, data: dict) -> None:
         counter = data.get("counter")
         if isinstance(counter, int) and counter != self.state.counter:
-            self.state.counter = counter
+            self.state.update(counter=counter)
             self._render_counter()
-            print(f"Counter: {self.state.counter}", flush=True)
+            print(f"Counter: {counter}", flush=True)
 
         theme = data.get("theme")
         if theme in ("light", "dark") and theme != self.state.theme:
-            self.state.theme = theme
+            self.state.update(theme=theme)
             self._apply_theme()
 
 
