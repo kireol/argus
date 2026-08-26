@@ -1,0 +1,26 @@
+# Argus Demo ESP32 example (PlatformIO + Wokwi). See README.md to build the
+# firmware and flash a board first.
+#
+# Run from the repository root, against a real board on ESP32_PORT:
+#     ESP32_PORT=/dev/cu.usbserial-0001 argus run --config examples/esp32/argus.yaml
+#
+# To run the same tests inside the Wokwi simulator (no physical board),
+# use examples/esp32/argus.wokwi.yaml instead — see that file for why this
+# example uses two config files rather than one with two esp32 devices.
+
+devices:
+  board:
+    type: esp32
+    platform: esp32
+    transport: serial
+    port: ${ESP32_PORT}
+    baud: 115200
+    agent: true
+    mono_colors: ["#ffffff", "#000000"]
+    instrumentation:
+      type: device
+
+test_paths: [examples/esp32/tests]
+asset_paths: [examples/esp32/images]
+results:
+  retain_on_success: false
