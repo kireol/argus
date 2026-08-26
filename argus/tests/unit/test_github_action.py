@@ -4,11 +4,12 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2]  # argus/ project
+REPO_ROOT = ROOT.parent  # monorepo root: action.yml and .github/ live here
 
 
 def test_action_is_a_thin_wrapper():
-    action = yaml.safe_load((ROOT / "action.yml").read_text())
+    action = yaml.safe_load((REPO_ROOT / "action.yml").read_text())
     assert action["runs"]["using"] == "composite"
     inputs = action["inputs"]
     for name in (
@@ -39,5 +40,5 @@ def test_action_is_a_thin_wrapper():
 def test_example_workflow_and_repo_workflow_parse():
     example = yaml.safe_load((ROOT / "examples" / "ci" / "github-workflow.yml").read_text())
     assert "kireol/argus@v1" in str(example)
-    repo = yaml.safe_load((ROOT / ".github" / "workflows" / "argus-ci.yml").read_text())
+    repo = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "argus-ci.yml").read_text())
     assert {"action-success", "action-test-failure", "action-config-failure"} <= set(repo["jobs"])
