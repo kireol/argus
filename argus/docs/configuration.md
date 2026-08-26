@@ -85,8 +85,10 @@ results:
   dir: results
   retain_on_success: false   # true keeps artifacts for passing tests too
   save_screenshots_on_failure: true
-  # Save actual/expected/diff for every image verify (pass or fail) and keep
-  # them for report.html. Same as CLI: argus run --save-comparisons
+  # Save actual/expected/diff for every image verify, and for text (OCR)
+  # verifies the screen + ocr.txt (recognised text, expected text, region
+  # outline) — pass or fail — and keep them for report.html.
+  # Same as CLI: argus run --save-comparisons
   save_comparison_images: false
 
 logging:

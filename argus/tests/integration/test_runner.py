@@ -551,3 +551,61 @@ def test_suite_device_steps_need_a_device(tmp_path):
     assert result.status == RunStatus.FAILED
     assert "Suite setup failed" in (result.tests[0].error or "")
     assert "needs a device" in (result.tests[0].error or "")
+
+
+# -- text (OCR) verification evidence -------------------------------------------------
+
+
+def _text_test(test_id: str, condition_type: str, text: str, *, region: bool = True) -> dict:
+    condition = {"type": condition_type, "text": text}
+    if region:
+        condition["region"] = {"x": 100, "y": 100, "width": 100, "height": 100}
+    return {
+        "id": test_id,
+        "name": f"Text {test_id}",
+        "feature": "Feature",
+        "platforms": ["android"],
+        "steps": [{"action": "verify", "name": "check text", "condition": condition}],
+    }
+
+
+def test_save_comparisons_keeps_ocr_evidence_for_passing_text_verifies(tmp_path):
+    config = build_config(tmp_path)
+    config.ocr.provider = "fake"  # fake OCR reads "" → text_absent passes
+    config.results.save_comparison_images = True
+    write_suite(tmp_path, [_text_test("T-001", "text_not_present", "Nope")])
+    result = TestRunner(config).run()
+    assert result.status == RunStatus.PASSED
+    test_result = result.tests[0]
+    assert test_result.artifact_dir is not None
+    artifact_dir = Path(test_result.artifact_dir)
+    assert (artifact_dir / "actual.png").exists()
+    assert (artifact_dir / "1_ocr_region.png").exists()
+    ocr = (artifact_dir / "ocr.txt").read_text()
+    assert "text_not_present PASSED" in ocr and "expected: 'Nope'" in ocr
+    assert "region: {'x': 100" in ocr
+    assert not (artifact_dir / "expected.png").exists()  # no reference image for OCR
+    from argus.reporting import write_html_report
+
+    report = write_html_report(result, Path(test_result.artifact_dir).parent / "report.html")
+    page = report.read_text()
+    assert 'src="T-001_android/actual.png"' in page
+    assert "OCR evidence (ocr.txt)" in page and "expected: &#x27;Nope&#x27;" in page
+
+
+def test_text_evidence_without_save_comparisons_only_on_failure(tmp_path):
+    config = build_config(tmp_path)
+    config.ocr.provider = "fake"
+    write_suite(tmp_path, [_text_test("T-001", "text_not_present", "Nope", region=False),
+                           _text_test("T-002", "text_present", "Batman")])
+    result = TestRunner(config).run(
+        RunOptions(failure_policy=FailurePolicy(stop_on_failure=False))
+    )
+    by_id = {t.test_id: t for t in result.tests}
+    assert by_id["T-001"].status == TestStatus.PASSED
+    assert by_id["T-001"].artifact_dir is None  # nothing retained on a pass
+    failed = by_id["T-002"]
+    assert failed.status == TestStatus.FAILED and failed.artifact_dir is not None
+    failed_dir = Path(failed.artifact_dir)
+    assert (failed_dir / "actual.png").exists() and (failed_dir / "ocr.txt").exists()
+    assert "text_present FAILED" in (failed_dir / "ocr.txt").read_text()
