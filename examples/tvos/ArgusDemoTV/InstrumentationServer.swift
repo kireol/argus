@@ -7,6 +7,10 @@
 //      GET /test/status  -> {"application":"ArgusDemo","version":"1.0.0",
 //                            "ready":true,"screen":"home"|"settings",
 //                            "capabilities":["status","state"]}
+//
+//  `ready` is honest: it stays false between App.init() (when this listener
+//  starts) and the first frame, so a test that gates on it is really waiting
+//  for an interactive UI.
 //      GET /test/state   -> {"counter":N,"theme":"light"|"dark",
 //                            "screen":"home"|"settings"}
 //      GET /test/health  -> 200 {"ok":true}
@@ -85,7 +89,7 @@ final class InstrumentationServer {
             return Self.ok([
                 "application": "ArgusDemo",
                 "version": "1.0.0",
-                "ready": true,
+                "ready": state.ready,
                 "screen": state.screen,
                 "capabilities": ["status", "state"],
             ])

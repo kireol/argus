@@ -204,8 +204,10 @@ tests:
             - type: application_state
               key: screen
               equals: settings
+            # NOT "Settings": that string is also on the home screen (the
+            # button we just pressed). "Dark theme" only exists here.
             - type: text_present
-              text: "Settings"
+              text: "Dark theme"
       - action: verify
         condition:
           type: log_contains
@@ -289,8 +291,9 @@ tests:
           key: ready
           equals: true
     steps:
-      - action: verify
+      - action: wait_until
         name: Light theme swatch is green
+        timeout: 20s
         condition:
           type: pixel_matches
           x: ${swatch_x}

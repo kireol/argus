@@ -20,6 +20,10 @@ enum DemoScreen: String {
 /// The instrumentation listener answers on a background queue, so it never
 /// touches `DemoModel` (which is main-actor bound) directly.
 struct DemoSnapshot: Sendable {
+    /// False until the first frame is on screen (`DemoModel.start()`), so the
+    /// `ready` gate in every test really means "interactive", not "process
+    /// launched" — the listener starts in `App.init()`, well before the UI.
+    var ready: Bool = false
     var counter: Int = 0
     var theme: String = "light"
     var screen: String = "home"
@@ -67,6 +71,7 @@ enum DemoLog {
 final class DemoModel: ObservableObject {
     @Published private(set) var counter: Int = 0
     @Published private(set) var screen: DemoScreen = .home
+    @Published private(set) var ready: Bool = false
 
     /// Bound to the `Dark theme` toggle on the settings screen.
     @Published var darkTheme: Bool = false {
@@ -77,7 +82,9 @@ final class DemoModel: ObservableObject {
         }
     }
 
+    /// Called from `ContentView.onAppear`, i.e. once the UI actually exists.
     func start() {
+        ready = true
         publish()
         DemoLog.emit("App ready")
         DemoLog.emit("Screen: \(screen.rawValue)")
@@ -98,6 +105,7 @@ final class DemoModel: ObservableObject {
 
     private func publish() {
         DemoSnapshotBox.shared.snapshot = DemoSnapshot(
+            ready: ready,
             counter: counter,
             theme: darkTheme ? "dark" : "light",
             screen: screen.rawValue
