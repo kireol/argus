@@ -1,0 +1,184 @@
+# Argus Demo — iOS (SwiftUI)
+
+A minimal SwiftUI app and a nine-test Argus suite that drives it on the iOS
+Simulator through [WebDriverAgent](https://github.com/appium/WebDriverAgent).
+
+The app is the shared "Argus Demo" from [`../README.md`](../README.md): a home
+screen with a title, a `Count: N` label, a `+` button, a `Settings` button and
+a colour swatch; a settings screen with a `Dark theme` switch and a `Back`
+button. It logs one line per action and serves the Argus instrumentation
+endpoints on port 8085 in debug builds.
+
+```
+examples/ios/
+  ArgusDemo.xcodeproj/       one app target, no tests target, no asset catalog
+  ArgusDemo/
+    ArgusDemoApp.swift       @main App; starts the instrumentation server
+    ContentView.swift        the whole UI, laid out at fixed coordinates
+    AppModel.swift           counter / theme / screen + logging
+    Instrumentation.swift    NWListener HTTP server (#if DEBUG)
+  argus.yaml                 device, log source, instrumentation, tap targets
+  tests/demo.yaml            IOS-001 … IOS-009
+```
+
+## Prerequisites
+
+| What | Why | Check |
+| --- | --- | --- |
+| macOS with **full Xcode 15+** | `xcodebuild`, the iOS SDK and the Simulator. The Command Line Tools alone are *not* enough. | `xcodebuild -version` |
+| An iOS 16+ simulator | Deployment target is iOS 16.0. | `xcrun simctl list devices available` |
+| WebDriverAgent | Argus talks to WDA's HTTP API directly; no Appium server. See [`docs/ios.md`](../../docs/ios.md). | `curl http://127.0.0.1:8100/status` |
+| `tesseract` | Seven of the nine tests use OCR (`text_present`). | `tesseract --version`, else `brew install tesseract` |
+| Argus | Run everything from the repository root. | `argus --version` |
+
+If `xcodebuild` reports *"tool 'xcodebuild' requires Xcode"*, you only have the
+Command Line Tools; install Xcode and run
+`sudo xcode-select -s /Applications/Xcode.app`.
+
+## Build
+
+Build the **Debug** configuration — the instrumentation server is inside
+`#if DEBUG`, and a Release build will fail every instrumentation assertion.
+
+```bash
+xcodebuild \
+  -project examples/ios/ArgusDemo.xcodeproj \
+  -scheme ArgusDemo \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath examples/ios/build \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+The app bundle lands at
+`examples/ios/build/Build/Products/Debug-iphonesimulator/ArgusDemo.app`.
+`examples/ios/build/` is git-ignored.
+
+## Run the app
+
+```bash
+# 1. Boot a simulator and show it.
+xcrun simctl boot 'iPhone 15' || true
+open -a Simulator
+
+# 2. Install and launch the demo.
+xcrun simctl install booted \
+  examples/ios/build/Build/Products/Debug-iphonesimulator/ArgusDemo.app
+xcrun simctl launch booted com.argus.demo
+
+# 3. Prove the app's instrumentation is answering. The simulator shares the
+#    Mac's network stack, so no port forwarding is needed.
+curl -s http://127.0.0.1:8085/test/status
+# {"application":"ArgusDemo","version":"1.0.0","ready":true,"screen":"home",
+#  "capabilities":["status","state"]}
+
+# 4. Prove the logs are visible (leave it running in another terminal, or just
+#    check that lines appear).
+xcrun simctl spawn booted log stream --style compact \
+  --predicate 'process == "ArgusDemo"'
+```
+
+### Start WebDriverAgent
+
+WDA is a separate Xcode project you build once and then keep running. Full
+instructions are in [`docs/ios.md`](../../docs/ios.md); the short version:
+
+```bash
+git clone https://github.com/appium/WebDriverAgent.git
+cd WebDriverAgent
+xcodebuild \
+  -project WebDriverAgent.xcodeproj \
+  -scheme WebDriverAgentRunner \
+  -destination 'platform=iOS Simulator,name=iPhone 15' \
+  test
+```
+
+Leave that command running — it *is* the server. Confirm it from another
+terminal:
+
+```bash
+curl -s http://127.0.0.1:8100/status
+```
+
+Physical devices additionally need a signing team, a unique bundle id for the
+runner, Developer Mode on the device, and either `iproxy 8100 8100` or the
+device's Wi-Fi IP in `argus.yaml`. The app's instrumentation port also has to
+be reachable — on a device, point `instrumentation.base_url` at the device's
+own IP rather than `127.0.0.1`.
+
+## Run the tests
+
+From the repository root:
+
+```bash
+argus run --config examples/ios/argus.yaml
+```
+
+Useful variations:
+
+```bash
+argus --dry-run --config examples/ios/argus.yaml   # validate config + tests only
+argus list --config examples/ios/argus.yaml        # show the nine tests
+argus run --config examples/ios/argus.yaml --tag smoke
+```
+
+### Coordinates
+
+Argus taps **screenshot pixels**, and the app lays its controls out at fixed
+**points** on a 393 × 852 pt screen (iPhone 15). On a 3× device the screenshot
+is 1179 × 2556 px, so pixel = point × 3. The pixel values live in one place —
+`variables:` in `argus.yaml` — so a different simulator only needs those
+numbers changed.
+
+| Control | Screen | Point | Screenshot pixel | Variables |
+| --- | --- | --- | --- | --- |
+| `+` | home | (196, 420) | (588, 1260) | `plus_x`, `plus_y` |
+| `Settings` | home | (196, 520) | (588, 1560) | `settings_x`, `settings_y` |
+| `Dark theme` switch | settings | (196, 300) | (588, 900) | `theme_toggle_x`, `theme_toggle_y` |
+| `Back` | settings | (196, 520) | (588, 1560) | `back_x`, `back_y` |
+| Colour swatch | both | (300, 120) | (900, 360) | `swatch_x`, `swatch_y` |
+
+The layout constants are in `ArgusDemo/ContentView.swift` (`enum Layout`), in
+points. `ContentView` positions everything absolutely on a safe-area-ignoring
+`ZStack` and deliberately has **no `NavigationStack`**: a navigation bar would
+push every control down by its own height and invalidate the table above.
+
+The swatch is `#2ecc71` (green) in light theme and `#8e44ad` (purple) in dark
+theme, so `pixel_matches` can assert the theme without OCR.
+
+## What the tests show
+
+| ID | Test | Argus features it demonstrates |
+| --- | --- | --- |
+| IOS-001 | Home screen shows the app title | `text_present` (OCR), `wait_until` vs `verify` |
+| IOS-002 | Instrumentation reports a ready app | `instrumentation_value` against `/test/status` |
+| IOS-003 | Tapping `+` increments the counter | `device.tap`, `application_state` against `/test/state` |
+| IOS-004 | Counter increments three times | `log_contains` against the simulator's unified log |
+| IOS-005 | Settings screen opens | composite `all:` conditions, `text_not_present` |
+| IOS-006 | `Back` returns home and keeps the counter | state preserved across navigation |
+| IOS-007 | Dark theme changes the swatch colour | `pixel_matches`, per-test `teardown` |
+| IOS-008 | Reset returns the app to a clean state | `device.reset` (terminate + relaunch) |
+| IOS-009 | Home screen screenshot is captured | the `screenshot` action and run artifacts |
+
+Every test's `setup:` relaunches the app and waits for the green swatch, so the
+suite does not depend on execution order and `--test IOS-007` works on its own.
+The feature-level `setup`/`teardown` in `tests/demo.yaml` starts and stops the
+app once for the whole `Demo` feature.
+
+There is no `wait` step anywhere: synchronization is always `wait_until` on the
+thing the test is actually waiting for.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+| --- | --- |
+| `Cannot reach WebDriverAgent at http://127.0.0.1:8100` | WDA is not running. Re-run the `xcodebuild … test` command above and leave it running. |
+| `Instrumentation unreachable: Connection refused` | The app is not running, or you installed a **Release** build (instrumentation is `#if DEBUG`). Check `curl http://127.0.0.1:8085/test/health`. |
+| `OCR unavailable: tesseract binary not found` | `brew install tesseract`. |
+| `did not return a session id` | `com.argus.demo` is not installed on the booted simulator. Re-run `xcrun simctl install booted …`. |
+| Taps land on the wrong control | The simulator is not a 3× 393 × 852 pt device, or the app rotated. Keep it in portrait, or take a screenshot (`argus run … ` saves one on failure), read the real pixel coordinates off it, and update `variables:` in `argus.yaml`. |
+| `log_contains` never matches | `log_command` uses `booted`; make sure exactly one simulator is booted. Interpolated values are logged with `privacy: .public` — if you add log lines of your own, do the same or the unified log will print `<private>`. |
+| `pixel_matches` is off by a few | Raise `tolerance:` in `tests/demo.yaml` (it is 12). Colour management can shift a channel or two. |
+| Blank or black screenshots | Bring the Simulator window to the front and make sure the device is not locked. |
