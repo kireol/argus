@@ -1,0 +1,336 @@
+# Argus Demo web example -- the "Argus Demo" app exercised through a real
+# Chromium browser (Playwright). Run from the repository root, with both
+# examples/backend/server.py and examples/web/server.py already running:
+#   argus run --config examples/web/argus.yaml
+#
+# Coordinates, log lines and the instrumentation/backend contracts are
+# documented in README.md; see docs/test-authoring.md for the YAML test
+# format and docs/browser.md for the browser adapter.
+#
+# This example is backend-connected (examples/backend/server.py polls into
+# the page every 500ms), so most tests reset the backend explicitly in
+# their own setup/teardown in addition to the feature-level reset -- see
+# "Isolation" in docs/test-authoring.md. A device.reset alone only reloads
+# the page; the page then re-reads whatever the backend currently holds, so
+# tests that assert an absolute counter/theme value reset the backend first.
+
+features:
+  Demo:
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.start
+    teardown:
+      - action: device.stop
+
+tests:
+
+  - id: WEB-001
+    name: App starts and title is visible
+    description: >
+      The app loads to the home screen with the "Argus Demo" title visible
+      (OCR).
+    feature: Demo
+    tags: [smoke, ocr, visual]
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Argus Demo"
+
+  - id: WEB-002
+    name: Instrumentation reports ready on home
+    description: >
+      The instrumentation status endpoint reports the app ready and on the
+      home screen.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          all:
+            - type: instrumentation_value
+              key: ready
+              equals: true
+            - type: instrumentation_value
+              key: screen
+              equals: home
+        timeout: 10s
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+
+  - id: WEB-003
+    name: "\"+\" increments the counter"
+    description: >
+      Tapping "+" once increments the counter and updates the on-screen
+      state.
+    feature: Demo
+    tags: [smoke]
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+
+  - id: WEB-004
+    name: Counter increments three times
+    description: >
+      Tapping "+" three times shows "Count: 3" and logs the counter after
+      each tap.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 3"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+
+  - id: WEB-005
+    name: Navigate to Settings
+    description: >
+      Tapping "Settings" opens the settings screen.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 640
+        y: 500
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+
+  - id: WEB-006
+    name: Back returns home and keeps the counter
+    description: >
+      Incrementing the counter, opening Settings, then tapping "Back"
+      returns to Home with the counter preserved.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: device.tap
+        x: 640
+        y: 500
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: device.tap
+        x: 640
+        y: 500
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+
+  - id: WEB-007
+    name: Dark theme changes the swatch colour
+    description: >
+      Toggling "Dark theme" in Settings switches the colour swatch from
+      green to purple. The swatch only exists on the Home screen, so the
+      test returns Home (via "Back") before reading its pixel colour.
+    feature: Demo
+    tags: [visual]
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+      - action: device.tap
+        x: 640
+        y: 500
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+    steps:
+      - action: device.tap
+        x: 640
+        y: 300
+      - action: device.tap
+        x: 640
+        y: 500
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: wait_until
+        condition:
+          type: pixel_matches
+          x: 1100
+          y: 150
+          color: "#8e44ad"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: pixel_matches
+          x: 1100
+          y: 150
+          color: "#8e44ad"
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+
+  - id: WEB-008
+    name: Backend drives the counter
+    description: >
+      Setting the counter through the backend is picked up by the page's
+      500ms poll and shown on screen.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: backend.set
+        data:
+          counter: 42
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 42"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 42
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+  - id: WEB-009
+    name: device.reset returns the app to a clean state
+    description: >
+      After incrementing the counter, resetting the backend and then the
+      device (the page re-reads backend state on load) shows "Count: 0"
+      again.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: device.tap
+        x: 640
+        y: 400
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 2"
+        timeout: 10s
+    steps:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 0"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 0
+
+  - id: WEB-010
+    name: Screenshot artifact
+    description: >
+      Capture a screenshot of the home screen as a documentation artifact.
+    feature: Demo
+    tags: []
+    platforms: [web]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: screenshot
+        file: web_home.png
