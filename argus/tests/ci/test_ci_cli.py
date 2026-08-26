@@ -1,6 +1,7 @@
 """``argus ci run`` through Typer's test runner."""
 
 import json
+import re
 
 import pytest
 from tests.ci.conftest import assertion_failing_test, passing_test
@@ -12,6 +13,13 @@ pytestmark = pytest.mark.integration
 
 runner = CliRunner()
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI styling; Typer forces a colour terminal when GITHUB_ACTIONS is set."""
+    return _ANSI.sub("", text)
+
 
 def test_ci_help_lists_run():
     result = runner.invoke(app, ["ci", "--help"])
@@ -22,7 +30,7 @@ def test_ci_help_lists_run():
 def test_ci_run_help_documents_options_and_exit_codes():
     result = runner.invoke(app, ["ci", "run", "--help"], env={"COLUMNS": "120"})
     assert result.exit_code == 0
-    out = result.output
+    out = _plain(result.output)
     for flag in (
         "--suite",
         "--provider",

@@ -20,6 +20,7 @@ def test_action_is_a_thin_wrapper():
         "retry",
         "upload-artifacts",
         "output-dir",
+        "working-directory",
     ):
         assert name in inputs, name
     outputs = action["outputs"]
