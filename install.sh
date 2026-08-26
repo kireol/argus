@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Universal Test Framework installer (macOS / Linux).
+# Argus installer (macOS / Linux): installs the Argus engine (argus/) and the
+# Argus Test Creator (argus-test-creator/) into one shared virtual environment.
 #
 # Usage:
 #   ./install.sh            # standard installation
-#   ./install.sh --dev      # development installation (argus[dev])
+#   ./install.sh --dev      # development installation (dev extras of both projects)
 #
 # Safe to run repeatedly: an existing installation is upgraded in place.
 # Requires no administrator privileges. Never modifies user configuration.
@@ -13,11 +14,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$REPO_ROOT/.venv"
 BIN_DIR="$HOME/.local/bin"
-EXTRAS="yocto,ocr"
+ARGUS_EXTRAS="yocto,ocr"
+CREATOR_EXTRAS="ui"
 MIN_PYTHON_MINOR=12
 
 if [[ "${1:-}" == "--dev" ]]; then
-    EXTRAS="yocto,ocr,dev"
+    ARGUS_EXTRAS="${ARGUS_EXTRAS},dev"
+    CREATOR_EXTRAS="${CREATOR_EXTRAS},dev"
 fi
 
 say()  { printf '%s\n' "$*"; }
@@ -26,8 +29,8 @@ warn() { printf '  \033[33m⚠\033[0m %s\n' "$*"; }
 die()  { printf '\n\033[31mINSTALLATION FAILED\033[0m\n\n%s\n\nNo existing configuration was modified.\n' "$*" >&2; exit 1; }
 
 say ""
-say "Universal Test Framework — installer"
-say "────────────────────────────────────"
+say "Argus — installer (engine + Test Creator)"
+say "─────────────────────────────────────────"
 say ""
 say "Platform: $(uname -s) $(uname -m)"
 
@@ -71,14 +74,15 @@ fi
 
 # ------------------------------------------------------------------ create venv
 say ""
-say "Installing framework..."
+say "Installing argus and argus-test-creator..."
 cd "$REPO_ROOT"
 
 if [[ -n "$UV_BIN" ]]; then
     # uv provisions a compatible Python automatically if needed.
     "$UV_BIN" venv --quiet --allow-existing --python ">=3.${MIN_PYTHON_MINOR}" "$VENV_DIR" \
         || die "Could not create the virtual environment with uv."
-    "$UV_BIN" pip install --quiet -p "$VENV_DIR/bin/python" -e ".[${EXTRAS}]" \
+    "$UV_BIN" pip install --quiet -p "$VENV_DIR/bin/python" \
+        -e "./argus[${ARGUS_EXTRAS}]" -e "./argus-test-creator[${CREATOR_EXTRAS}]" \
         || die "Dependency installation failed. Check network access / package index configuration."
 else
     if [[ ! -x "$VENV_DIR/bin/python" ]]; then
@@ -86,22 +90,25 @@ else
     fi
     "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip \
         || die "Could not upgrade pip inside the virtual environment."
-    "$VENV_DIR/bin/python" -m pip install --quiet -e ".[${EXTRAS}]" \
+    "$VENV_DIR/bin/python" -m pip install --quiet \
+        -e "./argus[${ARGUS_EXTRAS}]" -e "./argus-test-creator[${CREATOR_EXTRAS}]" \
         || die "Dependency installation failed. Check network access / package index configuration."
 fi
-ok "Framework and dependencies installed (extras: ${EXTRAS})"
+ok "argus[${ARGUS_EXTRAS}] and argus-test-creator[${CREATOR_EXTRAS}] installed"
 
 # ------------------------------------------------------------- launcher command
 mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/argus" <<EOF
+for cmd in argus argus-test-creator; do
+    cat > "$BIN_DIR/$cmd" <<EOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/argus" "\$@"
+exec "$VENV_DIR/bin/$cmd" "\$@"
 EOF
-chmod +x "$BIN_DIR/argus"
-ok "Launcher installed: $BIN_DIR/argus"
+    chmod +x "$BIN_DIR/$cmd"
+    ok "Launcher installed: $BIN_DIR/$cmd"
+done
 
 # ----------------------------------------------------------------- directories
-mkdir -p "$REPO_ROOT/results"
+mkdir -p "$REPO_ROOT/argus/results"
 ok "Result directory ready"
 
 # ----------------------------------------------------------------- health check
@@ -114,15 +121,17 @@ if "$VENV_DIR/bin/argus" validate --framework-only >/dev/null 2>&1; then
 else
     warn "Framework validation reported issues — run 'argus validate --framework-only' for details."
 fi
+"$VENV_DIR/bin/argus-test-creator" --help >/dev/null || die "The argus-test-creator command does not run."
+ok "argus-test-creator runs"
 
 # ----------------------------------------------------------------------- summary
 say ""
 say "────────────────────────────────────"
 printf '\033[32mINSTALLATION COMPLETE\033[0m\n'
 say ""
-say "The argus command is installed at: $BIN_DIR/argus"
+say "Commands installed in $BIN_DIR: argus, argus-test-creator"
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    warn "$BIN_DIR is not on your PATH — the 'argus' command will not be found."
+    warn "$BIN_DIR is not on your PATH — the commands will not be found."
     say  "  Add this line to your shell profile (e.g. ~/.zshrc), then open a new terminal:"
     say  "      export PATH=\"$BIN_DIR:\$PATH\""
 else
@@ -130,7 +139,9 @@ else
 fi
 say ""
 say "Next steps:"
+say "    cd argus"
 say "    argus init        # create your configuration"
 say "    argus validate    # check your environment"
 say "    argus run --config config/fake.yaml    # demo run (no hardware needed)"
+say "    argus-test-creator demo                # open the Test Creator on the demo target"
 say ""
