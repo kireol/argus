@@ -16,7 +16,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
   Run the CLI from `argus/` (or pass `--config`) — the default
   `test_paths: ["test_suites"]` is relative to the working directory, and
   `results/` is created there.
-- Both packages share one version number from now on (1.2.0).
+- Both packages share one version number from now on (1.2.1).
 
 ### Added
 - First-class CI/CD integration: `argus ci run` orchestrates the existing
