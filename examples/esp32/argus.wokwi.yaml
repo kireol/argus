@@ -2,14 +2,15 @@
 # board required). Needs wokwi-cli and WOKWI_CLI_TOKEN — see README.md.
 #
 # This is a separate config from argus.yaml (not a second device in the same
-# config) because Argus resolves the device for a platform-only test by
-# picking the first configured device name for that platform (see
-# TestRunner.device_names_for in src/argus/engine/runner.py and
-# RunSession.devices_for_platform in src/argus/engine/session.py); with
-# both "board" (serial) and "sim" (wokwi) declared under one esp32
-# platform, every test would silently run against "board" unless each test
-# set requires.devices explicitly. Two single-device configs avoid that
-# footgun and keep tests/demo.yaml identical for both entry points.
+# config) because Argus resolves the device for a platform-only test via
+# TestRunner._device_name_for (src/argus/engine/runner.py:514), which calls
+# RunSession.devices_for_platform (src/argus/engine/session.py:94) and takes
+# names[0] of the sorted result -- so with two same-platform devices, "board"
+# (which sorts before "sim") would always win. With both "board" (serial) and
+# "sim" (wokwi) declared under one esp32 platform, every test would silently
+# run against "board" unless each test set requires.devices explicitly. Two
+# single-device configs avoid that footgun and keep tests/demo.yaml identical
+# for both entry points.
 #
 # Run from the repository root, after building the firmware (see README.md):
 #     argus run --config examples/esp32/argus.wokwi.yaml

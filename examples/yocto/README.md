@@ -228,7 +228,7 @@ it if your target's boot/restart is slower.
 
 ## Troubleshooting
 
-- **`argus validate` fails with "no host configured"**: set `YOCTO_HOST`,
+- **`.venv/bin/argus validate` fails with "no host configured"**: set `YOCTO_HOST`,
   `YOCTO_USER`, `YOCTO_KEY` (or use `password` in a local override instead
   of a key).
 - **SSH connects but the screenshot/log steps fail**: confirm
