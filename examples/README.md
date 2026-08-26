@@ -6,8 +6,9 @@ folder under `examples/<target>/` with its own `argus.yaml`, its own
 `tests/` directory, and a README with Prerequisites / Build / Run the app /
 Run the tests / What the tests show / Troubleshooting sections.
 `tests/unit/test_examples.py` loads every example's configuration and test
-suite (including ESP32's second config, `argus.wokwi.yaml`) with the real
-Argus loaders as a regression check, so the examples don't rot silently.
+suite (including desktop's second config, `argus.retina.yaml`, and ESP32's
+second config, `argus.wokwi.yaml`) with the real Argus loaders as a
+regression check, so the examples don't rot silently.
 
 **All commands below are run from the repository root**, e.g.:
 
@@ -23,7 +24,7 @@ not from inside the example's own directory.
 | --- | --- | --- | --- |
 | `examples/backend/` | none (`type: http`, backend only) | Python 3 (standard library only) | `python examples/backend/server.py`, then `argus run --config examples/backend/argus.yaml` |
 | `examples/web/` | `browser` (`platform: web`) | Playwright + a browser install (`uv pip install -e ".[browser,ocr]"`, `.venv/bin/playwright install chromium`), the demo backend running | `python examples/web/server.py`, then `argus run --config examples/web/argus.yaml` |
-| `examples/desktop/` | `desktop` | A desktop session (macOS/Linux/Windows), `argus[desktop,ocr]`, Tesseract on `PATH`, the demo backend running; macOS needs Screen Recording + Accessibility permission granted to the terminal | `argus run --config examples/desktop/argus.yaml` (launches `app.py` itself) |
+| `examples/desktop/` | `desktop` | A desktop session (macOS/Linux/Windows), `argus[desktop,ocr]`, Tesseract on `PATH`, the demo backend running; macOS needs Screen Recording + Accessibility permission granted to the terminal | `argus run --config examples/desktop/argus.yaml` (launches `app.py` itself), or `examples/desktop/argus.retina.yaml` on a 2x/HiDPI display |
 | `examples/android/` | `android` | Android SDK (`ANDROID_HOME`, `adb`), a running emulator or device (API 26+), `ANDROID_SERIAL`, JDK 17+ and `gradle` to build | `./gradlew assembleDebug` + `adb install`, then `argus run --config examples/android/argus.yaml` |
 | `examples/ios/` | `ios` | macOS with full Xcode 15+ (not just Command Line Tools), an iOS 16+ simulator, WebDriverAgent running on `:8100`, `tesseract` | `xcodebuild ... build` + `xcrun simctl install/launch`, then `argus run --config examples/ios/argus.yaml` |
 | `examples/tvos/` | `tvos_sim` | macOS with full Xcode 15+, a 1080p Apple TV simulator (not Apple TV 4K), Accessibility permission for the terminal, `tesseract` | `xcodebuild -sdk appletvsimulator ...`, then `argus run --config examples/tvos/argus.yaml` |
@@ -69,15 +70,20 @@ same way across platforms:
   corresponding events happen — so `log_contains` works on every platform
   that exposes logs (logcat, browser console, Roku debug console, simulator
   `log stream`, serial).
-- Instrumentation, where an HTTP listener is possible (backend, web,
-  desktop, Android, iOS sim, tvOS sim, Yocto), on port **8085**:
+- Instrumentation, where an HTTP listener is possible, serving:
   - `GET /test/status` → `{"application":"ArgusDemo","version":"1.0.0","ready":true,"screen":"home"|"settings","capabilities":["status","state"]}`
   - `GET /test/state` → `{"counter":N,"theme":"light"|"dark","screen":"home"|"settings"}`
   - `GET /test/health` → 200 `{"ok":true}`
 
-  ESP32 serves the same contract over the serial agent
-  (`instrumentation: {type: device}`) instead of HTTP. Roku and a physical
-  Apple TV have no instrumentation at all.
+  Desktop, Android, iOS sim, tvOS sim, and Yocto serve this on a dedicated
+  port **8085**. Web serves it on the same port as the page itself (**3000**
+  by default) — there's no separate instrumentation server, `server.py`
+  answers `/test/*` alongside the static files. ESP32 serves the same
+  contract over the serial agent (`instrumentation: {type: device}`)
+  instead of HTTP. The backend example has no application under test at all
+  (`devices: {}` — it exercises the backend API directly), and Roku and a
+  physical Apple TV have no instrumentation — neither has any listener a
+  test could reach.
 - Backend-driven state (backend, web, desktop only): the app polls the
   example backend's `GET /api/state` every 500 ms and applies `counter` and
   `theme` from it, so `backend.set` visibly changes the UI; it also `POST`s
