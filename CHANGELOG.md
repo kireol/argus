@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Repository layout (monorepo).** Argus now lives in `argus/` and the Argus
+  Test Creator (previously the separate `argus-test-creator` repository,
+  imported with its history) in `argus-test-creator/`. The repository root is a
+  uv workspace holding only shared files: `install.sh` / `install.ps1`,
+  `action.yml`, this changelog, LICENSE and CONTRIBUTING. One `.venv` at the
+  root serves both projects. `uses: kireol/argus@v1` keeps working unchanged.
+  Run the CLI from `argus/` (or pass `--config`) — the default
+  `test_paths: ["test_suites"]` is relative to the working directory, and
+  `results/` is created there.
+- Both packages share one version number from now on (1.2.0).
+
 ### Added
 - First-class CI/CD integration: `argus ci run` orchestrates the existing
   engine with CI provider detection (GitHub Actions, GitLab CI, Jenkins,
@@ -143,3 +155,39 @@ Initial release.
   post-install health check.
 - Framework self-test suite (unit + integration, 150+ tests) and example
   test suite that runs against fake adapters.
+
+---
+
+## Test Creator
+
+Changes to `argus-test-creator/` (its changelog before the monorepo merge on
+2026-08-26; later changes are recorded in the sections above).
+
+### Added
+- Android recording via `adb shell getevent`: device discovery with explicit selection,
+  touchscreen discovery from `getevent -lp`, streaming subprocess with clean shutdown,
+  typed raw-event parser, multi-touch slot tracking, coordinate mapping (axis ranges,
+  inversion, rotation), gesture recognition (tap, swipe, long press, multi-touch, hardware
+  keys), disconnect/reconnect, Android panel and diagnostics view in the GUI, `doctor`
+  Android chain, fake ADB for tests, performance benchmark, and an Android recording guide.
+- Generic `GESTURE` recording event and `MULTI_TOUCH` normalized action
+  (`device.multi_touch`); `supports_hardware_keys` capability; `TargetLost`/`TargetRestored`
+  session events.
+- Authoring model (`AuthoringDocument`) independent of the Argus YAML format, with provenance
+  on every step.
+- Command-based undo/redo, metadata editor, step list with edit/rename/duplicate/reorder/
+  disable/convert, YAML preview, validation panel, quality analyzer.
+- Recorder framework: `RecorderAdapter` interface, bounded event sink with backpressure,
+  crash-safe session journal with recovery, deterministic normalization (exact and smart modes).
+- Recorder adapters: fake (Movies demo), browser (Playwright), desktop (pynput + mss),
+  Android (ADB, controlled input).
+- Assertion authoring: region selection with crop preview, OCR text picking, deterministic
+  assertion suggestions after screen changes, image asset management with content-hash dedup.
+- Argus integration: discovery, `argus validate`, `argus run` with `report.json` parsing,
+  schema inspection.
+- CLI: `version`, `new`, `gui`, `validate`, `export`, `doctor`, `demo`.
+- Documentation and PyInstaller packaging configuration.
+
+### Fixed
+- `ui.bridge.watch` could miss the result of a job that finished before its signals were
+  connected.

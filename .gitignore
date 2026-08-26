@@ -6,7 +6,7 @@ __pycache__/
 build/
 dist/
 
-# Virtual environments
+# Virtual environments (one shared .venv at the repository root)
 .venv/
 venv/
 
@@ -18,7 +18,9 @@ venv/
 htmlcov/
 
 # Test results and artifacts (never commit run output)
+argus/results/
 results/
+.argus-creator/workspace/
 
 # Editor/OS
 .vscode/
@@ -30,4 +32,4 @@ results/
 *.local.yaml
 
 # PlatformIO build output (firmware.bin/.elf are committed separately)
-agents/esp32/examples/ssd1306_menu/.pio/
+argus/agents/esp32/examples/ssd1306_menu/.pio/
