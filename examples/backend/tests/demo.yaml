@@ -1,0 +1,157 @@
+# Argus Demo backend example tests (BE-001..BE-008).
+#
+# These drive the tiny REST API in examples/backend/server.py directly with
+# backend.* actions and the backend_value condition -- no device is bound
+# (platforms: is omitted on every test, so each runs exactly once with no
+# device; see docs/test-authoring.md and the engine's `_platforms_for`).
+#
+# Feature-level setup/teardown resets the backend once before the first
+# selected test and once after the last (see "Feature-level setup and
+# teardown" in docs/test-authoring.md). Individual tests that mutate state
+# also reset in their own setup/teardown so they pass regardless of the
+# order tests are selected/run in (see "Isolation" in docs/test-authoring.md).
+
+features:
+  Demo:
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+tests:
+
+  - id: BE-001
+    name: Health check succeeds
+    description: The health endpoint reports the backend is up.
+    feature: Demo
+    tags: [smoke]
+    steps:
+      - action: backend.get
+        endpoint: /health
+        expect_status: 200
+
+  - id: BE-002
+    name: Reset returns the initial state
+    description: Resetting the backend clears the counter back to zero.
+    feature: Demo
+    steps:
+      - action: backend.post
+        endpoint: /api/reset
+      - action: verify
+        condition:
+          type: backend_value
+          key: counter
+          equals: 0
+
+  - id: BE-003
+    name: Setting the counter updates backend state
+    description: backend.set writes counter and it is readable back.
+    feature: Demo
+    tags: [smoke]
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+    steps:
+      - action: backend.set
+        data:
+          counter: 5
+      - action: verify
+        condition:
+          type: backend_value
+          key: counter
+          equals: 5
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+  - id: BE-004
+    name: Setting the theme updates backend state
+    description: backend.set writes theme and it is readable back.
+    feature: Demo
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+    steps:
+      - action: backend.set
+        data:
+          theme: dark
+      - action: verify
+        condition:
+          type: backend_value
+          key: theme
+          equals: dark
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+  - id: BE-005
+    name: Merging state keeps other keys
+    description: >
+      Setting the theme after the counter must not clobber the counter --
+      POST /api/state merges the JSON body into existing state.
+    feature: Demo
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+    steps:
+      - action: backend.set
+        data:
+          counter: 7
+      - action: backend.set
+        data:
+          theme: dark
+      - action: verify
+        condition:
+          type: backend_value
+          key: counter
+          equals: 7
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
+
+  - id: BE-006
+    name: Non-object body is rejected
+    description: >
+      POST /api/state requires a JSON object body; a JSON array is valid
+      JSON but not an object, so the server rejects it with 400.
+    feature: Demo
+    steps:
+      - action: backend.post
+        endpoint: /api/state
+        data: [1, 2]
+        expect_status: 400
+
+  - id: BE-007
+    name: Unknown endpoint returns 404
+    description: Requesting a route the backend does not implement returns 404.
+    feature: Demo
+    steps:
+      - action: backend.get
+        endpoint: /nope
+        expect_status: 404
+
+  - id: BE-008
+    name: Counter update is observable via polling
+    description: >
+      wait_until polls backend_value until the counter reaches the value set
+      by backend.set, demonstrating the framework's synchronization tool.
+    feature: Demo
+    setup:
+      - action: backend.post
+        endpoint: /api/reset
+    steps:
+      - action: backend.set
+        data:
+          counter: 9
+      - action: wait_until
+        condition:
+          type: backend_value
+          key: counter
+          equals: 9
+        timeout: 5s
+        poll_interval: 250ms
+    teardown:
+      - action: backend.post
+        endpoint: /api/reset
