@@ -1,0 +1,200 @@
+# Argus Demo tests for the Roku BrightScript SceneGraph channel.
+#
+# Roku has no pointer input and no instrumentation HTTP endpoint, so these
+# tests drive the channel with remote-control keys and observe it through
+# the BrightScript debug console (`log_contains`) and, where a
+# `dev_password` is configured, OCR/pixel checks on screenshots of the
+# sideloaded channel's own render.
+#
+# Navigation (see README.md): on Home, `ENTER` increments the counter and
+# `DPAD_RIGHT` opens Settings; on Settings, `ENTER` toggles the theme and
+# `BACK` returns to Home. The counter is preserved across navigation; only
+# `device.reset` (relaunching the channel) clears it.
+
+features:
+  Demo:
+    setup:
+      - action: device.start
+    teardown:
+      - action: device.stop
+
+tests:
+
+  - id: ROKU-001
+    name: Channel starts and logs App ready
+    description: >
+      Verify the channel launches and prints the startup log line.
+    feature: Demo
+    tags: [smoke]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: log_contains
+          text: "App ready"
+        timeout: 15s
+
+  - id: ROKU-002
+    name: Title is visible on the home screen
+    description: >
+      Verify the "Argus Demo" title renders on the home screen. Requires OCR.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+
+  - id: ROKU-003
+    name: ENTER increments the counter
+    description: >
+      Verify a single OK/ENTER press on Home increments the counter to 1.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+
+  - id: ROKU-004
+    name: Counter increments three times
+    description: >
+      Verify three OK/ENTER presses on Home leave the counter at 3, checked
+      via the debug console rather than OCR.
+    feature: Demo
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+        timeout: 10s
+
+  - id: ROKU-005
+    name: DPAD_RIGHT opens Settings
+    description: >
+      Verify pressing right on Home navigates to the Settings screen.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: DPAD_RIGHT
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+
+  - id: ROKU-006
+    name: BACK returns home and keeps the counter
+    description: >
+      Verify leaving Settings with back returns to Home without resetting
+      the counter.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: DPAD_RIGHT
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: device.key
+        key: BACK
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 2"
+        timeout: 10s
+
+  - id: ROKU-007
+    name: Toggling theme in Settings turns the swatch purple
+    description: >
+      Verify OK on Settings switches to the dark theme, recolouring the
+      swatch to purple and logging the change.
+    feature: Demo
+    tags: [visual]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: DPAD_RIGHT
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        condition:
+          type: log_contains
+          text: "Theme: dark"
+        timeout: 10s
+      - action: wait_until
+        condition:
+          type: pixel_matches
+          x: 1600
+          y: 150
+          color: "#8e44ad"
+        timeout: 10s
+
+  - id: ROKU-008
+    name: device.reset returns the app to a clean state
+    description: >
+      Verify relaunching the channel clears the counter back to 0.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [roku]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 2"
+        timeout: 10s
+      - action: device.reset
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 0"
+        timeout: 10s

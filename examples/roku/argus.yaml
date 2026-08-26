@@ -1,0 +1,22 @@
+# Roku example: BrightScript SceneGraph channel driven over ECP, with the
+# BrightScript debug console (port 8085) as the device log. Run from the
+# repository root:
+#
+#   ROKU_HOST=192.168.1.42 ROKU_DEV_PASSWORD=<devpw> \
+#     .venv/bin/argus run --config examples/roku/argus.yaml
+#
+# See examples/roku/README.md for enabling developer mode, sideloading, and
+# the exact navigation/key mapping this example uses.
+
+devices:
+  tv:
+    type: roku
+    platform: roku
+    host: ${ROKU_HOST}
+    dev_password: ${ROKU_DEV_PASSWORD}
+    channel_zip: examples/roku/build/channel.zip
+
+test_paths: [examples/roku/tests]
+
+results:
+  retain_on_success: false
