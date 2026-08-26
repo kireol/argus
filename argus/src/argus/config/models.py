@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from argus.ci.categories import RETRY_ALIASES, RETRYABLE, canonical_retry_category
 from argus.models.common import Region
+from argus.stress.config import StressConfig
 from argus.utilities.duration import parse_duration
 
 
@@ -44,7 +45,7 @@ class BackendConfig(BaseModel):
 
     @property
     def configured(self) -> bool:
-        if self.type == "fake":
+        if self.type in ("fake", "stress_demo"):
             return True
         return bool(self.base_url) and "${" not in (self.base_url or "")
 
@@ -510,6 +511,8 @@ class AppConfig(BaseModel):
     preflight: PreflightConfig = Field(default_factory=PreflightConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     ci: CIConfig = Field(default_factory=CIConfig)
+    #: ``stress:`` — monkey/stress/chaos scenarios (see docs/stress-testing.md).
+    stress: StressConfig = Field(default_factory=StressConfig)
     test_paths: list[str] = Field(default_factory=lambda: ["test_suites"])
     asset_paths: list[str] = Field(default_factory=lambda: ["assets/images"])
     variables: dict[str, Any] = Field(default_factory=dict)
