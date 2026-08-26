@@ -6,10 +6,12 @@ and logs its transitions to stdout for journalctl."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-# Files here are a checked-in mirror of ../../../app/ -- see the "Editable
-# source vs. recipe files" section of examples/yocto/README.md for why, and
-# `make sync` (or the one-line cp it documents) to refresh them after editing
-# the app.
+# The editable source lives in examples/yocto/app/ (not a files/ copy here):
+# THISDIR is .../meta-argus-demo/recipes-argus/argus-demo, so three levels up
+# is examples/yocto/, then into app/. See the "Editable source vs. recipe
+# files" section of examples/yocto/README.md.
+FILESEXTRAPATHS:prepend := "${THISDIR}/../../../app:"
+
 SRC_URI = " \
     file://argus_demo.py \
     file://argus-demo.service \
