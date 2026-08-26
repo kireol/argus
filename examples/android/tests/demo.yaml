@@ -1,0 +1,262 @@
+# Argus Android example — the "Argus Demo" app exercised end to end.
+# Run from the repository root:
+#   ANDROID_SERIAL=<serial> argus run --config examples/android/argus.yaml
+#
+# Tap coordinates and log/instrumentation contracts are documented in
+# README.md; see docs/test-authoring.md for the YAML test format.
+
+features:
+  Demo:
+    setup:
+      - action: device.start
+    teardown:
+      - action: device.stop
+
+tests:
+
+  - id: AND-001
+    name: App starts and title is visible
+    description: >
+      The app launches to the home screen with the "Argus Demo" title
+      visible (OCR).
+    feature: Demo
+    tags: [smoke, ocr, visual]
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Argus Demo"
+
+  - id: AND-002
+    name: Instrumentation reports ready on home
+    description: >
+      The instrumentation status endpoint reports the app ready and on the
+      home screen.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          all:
+            - type: instrumentation_value
+              key: ready
+              equals: true
+            - type: instrumentation_value
+              key: screen
+              equals: home
+        timeout: 10s
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+
+  - id: AND-003
+    name: "\"+\" increments the counter"
+    description: >
+      Tapping "+" once increments the counter and updates the on-screen
+      state.
+    feature: Demo
+    tags: [smoke]
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+
+  - id: AND-004
+    name: Counter increments three times
+    description: >
+      Tapping "+" three times shows "Count: 3" and logs the counter after
+      each tap.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 3"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+
+  - id: AND-005
+    name: Navigate to Settings
+    description: >
+      Tapping "Settings" opens the settings screen.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 540
+        y: 1250
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+
+  - id: AND-006
+    name: BACK returns home and keeps the counter
+    description: >
+      Incrementing the counter, opening Settings, then pressing BACK
+      returns to Home with the counter preserved.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: device.tap
+        x: 540
+        y: 1250
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+      - action: device.key
+        key: BACK
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+
+  - id: AND-007
+    name: Dark theme changes the swatch colour
+    description: >
+      Toggling "Dark theme" in Settings switches the colour swatch from
+      green to purple.
+    feature: Demo
+    tags: [visual]
+    platforms: [android]
+    setup:
+      - action: device.reset
+      - action: device.tap
+        x: 540
+        y: 1250
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Settings"
+        timeout: 10s
+    steps:
+      - action: device.tap
+        x: 540
+        y: 700
+      - action: wait_until
+        condition:
+          type: pixel_matches
+          x: 900
+          y: 300
+          color: "#8e44ad"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: pixel_matches
+          x: 900
+          y: 300
+          color: "#8e44ad"
+    teardown:
+      - action: device.reset
+
+  - id: AND-008
+    name: device.reset returns the app to a clean state
+    description: >
+      After incrementing the counter, resetting the app clears its data and
+      shows "Count: 0" again.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: device.tap
+        x: 540
+        y: 1000
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 2"
+        timeout: 10s
+    steps:
+      - action: device.reset
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 0"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 0
+
+  - id: AND-009
+    name: Screenshot artifact
+    description: >
+      Capture a screenshot of the home screen as a documentation artifact.
+    feature: Demo
+    tags: []
+    platforms: [android]
+    setup:
+      - action: device.reset
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: screenshot
+        file: android_home.png
