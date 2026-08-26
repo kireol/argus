@@ -7,6 +7,13 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `examples/`: nine complete, buildable sample apps ("Argus Demo"), one per
+  supported target (backend, web, desktop, android, ios, tvos, roku, esp32,
+  yocto), each with its own `argus.yaml`, `tests/demo.yaml` suite, and
+  README (Prerequisites/Build/Run/Tests/Troubleshooting); `examples/README.md`
+  indexes all nine and documents the shared demo-app spec.
+  `tests/unit/test_examples.py` loads every `examples/*/argus*.yaml` with
+  the real config/test loaders as a regression check.
 - Feature-level `setup`/`teardown`: a top-level `features:` block in test
   files runs steps once per feature (per platform) before its first selected
   test and after its last, with `FeatureSetup*`/`FeatureTeardown*` events and
