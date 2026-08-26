@@ -1,0 +1,411 @@
+# Argus Demo — tvOS Simulator test suite.
+#
+#     argus run --config examples/tvos/argus.yaml
+#
+# tvOS has no pointer, so every interaction here is a remote key press
+# (`device.key`). The Argus tvOS simulator adapter turns those into keyboard
+# shortcuts for the Simulator window via osascript, which needs Accessibility
+# permission for your terminal — see the README.
+#
+# Every test resets the application in its own `setup:` so the suite is
+# order-independent, and waits for the instrumentation listener to answer
+# rather than sleeping.
+
+features:
+  Demo:
+    setup:
+      - action: device.start
+        name: Launch Argus Demo
+    teardown:
+      - action: device.stop
+        name: Terminate Argus Demo
+
+tests:
+
+  - id: TV-001
+    name: App starts and the title is visible
+    description: >
+      The app launches on the home screen, logs "App ready" and renders the
+      title in a size the OCR engine can read from a 1920x1080 screenshot.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: log_contains
+          text: "App ready"
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: text_present
+          text: "Argus Demo"
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 0"
+
+  - id: TV-002
+    name: Instrumentation reports ready on the home screen
+    description: >
+      The in-app instrumentation listener (DEBUG builds only, port 8085)
+      serves the standard status document and the demo state.
+    feature: Demo
+    tags: [instrumentation]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: verify
+        condition:
+          all:
+            - type: instrumentation_value
+              key: application
+              equals: ArgusDemo
+            - type: instrumentation_value
+              key: version
+              equals: "1.0.0"
+            - type: instrumentation_value
+              key: screen
+              equals: home
+            - type: application_state
+              key: counter
+              equals: 0
+            - type: application_state
+              key: theme
+              equals: light
+
+  - id: TV-003
+    name: ENTER increments the counter
+    description: >
+      The "+" control holds default focus on the home screen, so a single
+      Select (ENTER) press increments the counter.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: device.key
+        name: Select "+"
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: counter
+              equals: 1
+            - type: text_present
+              text: "Count: 1"
+
+  - id: TV-004
+    name: Counter increments three times
+    description: >
+      Three Select presses in a row leave the counter at 3, and the app logs
+      each value so the run is diagnosable from the simulator log stream.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 10s
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 10s
+        condition:
+          type: application_state
+          key: counter
+          equals: 2
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: counter
+              equals: 3
+            - type: text_present
+              text: "Count: 3"
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+
+  - id: TV-005
+    name: DPAD_RIGHT then ENTER opens Settings
+    description: >
+      Moving focus right from "+" lands on "Settings"; Select navigates to the
+      settings screen.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: device.key
+        name: Move focus to "Settings"
+        key: DPAD_RIGHT
+      - action: device.key
+        name: Select "Settings"
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: screen
+              equals: settings
+            - type: text_present
+              text: "Settings"
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Screen: settings"
+
+  - id: TV-006
+    name: MENU returns home and keeps the counter
+    description: >
+      The Apple TV remote's Menu button (Escape in the Simulator) leaves the
+      settings screen; navigation must not reset the counter.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: device.key
+        name: Select "+"
+        key: ENTER
+      - action: wait_until
+        timeout: 10s
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+      - action: device.key
+        key: DPAD_RIGHT
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+      - action: device.key
+        name: Menu
+        key: MENU
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: screen
+              equals: home
+            - type: application_state
+              key: counter
+              equals: 1
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 1"
+
+  - id: TV-007
+    name: Dark theme turns the swatch purple
+    description: >
+      The "Dark theme" toggle holds default focus on the settings screen, so
+      one Select press switches the theme. The swatch occupies x 1500-1700,
+      y 100-200 on a 1920x1080 simulator; the pixel at its centre proves the
+      theme without OCR.
+    feature: Demo
+    tags: [visual]
+    platforms: [tvos_sim]
+    parameters:
+      swatch_x: 1600
+      swatch_y: 150
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: verify
+        name: Light theme swatch is green
+        condition:
+          type: pixel_matches
+          x: ${swatch_x}
+          y: ${swatch_y}
+          color: "#2ecc71"
+          tolerance: 20
+      - action: device.key
+        key: DPAD_RIGHT
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+      - action: device.key
+        name: Toggle "Dark theme"
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: theme
+              equals: dark
+            - type: pixel_matches
+              x: ${swatch_x}
+              y: ${swatch_y}
+              color: "#8e44ad"
+              tolerance: 20
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Theme: dark"
+    teardown:
+      # A reinstall is the deterministic way back to the light theme, whatever
+      # the test left focused.
+      - action: device.reset
+
+  - id: TV-008
+    name: Reset returns the app to a clean state
+    description: >
+      device.reset reinstalls and relaunches the app; the counter is back to 0
+      on screen and in the instrumentation state.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: device.key
+        key: ENTER
+      - action: device.key
+        key: ENTER
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: application_state
+          key: counter
+          equals: 2
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers again
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+      - action: wait_until
+        timeout: 20s
+        condition:
+          all:
+            - type: application_state
+              key: counter
+              equals: 0
+            - type: text_present
+              text: "Count: 0"
+
+  - id: TV-009
+    name: Screenshot artifact
+    description: >
+      Captures the home screen into the test's artifacts — handy when a
+      visual assertion fails and you want to see what the simulator showed.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [tvos_sim]
+    setup:
+      - action: device.reset
+      - action: wait_until
+        name: Instrumentation answers
+        timeout: 30s
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+    steps:
+      - action: wait_until
+        timeout: 20s
+        condition:
+          type: text_present
+          text: "Argus Demo"
+      - action: screenshot
+        file: tvos-home.png
+      - action: verify
+        condition:
+          type: pixel_matches
+          x: 1600
+          y: 150
+          color: "#2ecc71"
+          tolerance: 20
