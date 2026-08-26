@@ -225,7 +225,7 @@ bar and the window's own title bar both take up space above it, and how
 much varies by macOS version and window manager, so do not hardcode a
 specific offset. If tests fail with plausible-looking screenshots that
 seem shifted vertically or horizontally, measure the real offset instead
-of guessing: run any test (e.g. `argus run --config examples/desktop/argus.yaml --test DSK-001`),
+of guessing: run any test (e.g. `.venv/bin/argus run --config examples/desktop/argus.yaml --test DSK-001`),
 open a saved screenshot from `results/<run>/DSK-001_desktop/` (or
 temporarily set `results: {retain_on_success: false}` to `true` in the
 config to keep one from a passing run), and compare where the title/window

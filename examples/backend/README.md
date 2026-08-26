@@ -96,8 +96,8 @@ declare a `platforms:` list. This is deliberate and confirmed working: per
 once with no device bound." The backend adapter is created independently of
 any device (`RunSession.backend` in `src/argus/engine/session.py`), so a
 backend-only test suite genuinely needs no `devices:` entries at all — no
-`fake` placeholder device required. Both `argus --dry-run --config
-examples/backend/argus.yaml` and `argus run --config
+`fake` placeholder device required. Both `.venv/bin/argus --dry-run --config
+examples/backend/argus.yaml` and `.venv/bin/argus run --config
 examples/backend/argus.yaml` were run against this config to confirm.
 
 ## Troubleshooting

@@ -176,9 +176,11 @@ tests:
         args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
                -H, "Content-Type: application/json", -d, '{"key":"RIGHT"}']
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 5s
       - action: verify
         condition:
