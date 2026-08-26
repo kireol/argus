@@ -56,6 +56,12 @@ class RunSession:
                 from argus.adapters.fake import FakeBackend
 
                 self._backend = FakeBackend(self.config.backend.initial_state)
+            elif self.config.backend.type == "stress_demo":
+                from argus.stress.demo import DemoStoreBackend
+
+                self._backend = DemoStoreBackend(
+                    self.config.backend.initial_state.get("products") or None
+                )
             else:
                 self._backend = BackendAdapter(self.config.backend)
         return self._backend
@@ -86,8 +92,14 @@ class RunSession:
     def _bind_fake_world(self, device: Device) -> None:
         """Let a FakeDevice render the FakeBackend's state (demo/self-test mode)."""
         from argus.adapters.fake import FakeDevice
+        from argus.stress.demo import DemoStoreBackend, DemoStoreDevice
 
-        if isinstance(device, FakeDevice) and self.config.backend.type == "fake":
+        if isinstance(device, DemoStoreDevice) and self.config.backend.type == "stress_demo":
+            backend = self.backend
+            assert isinstance(backend, DemoStoreBackend)
+            device.backend = backend
+            device.bind_state_provider(backend.get_state)
+        elif isinstance(device, FakeDevice) and self.config.backend.type == "fake":
             backend = self.backend
             device.bind_state_provider(lambda: backend.get_state())
 
