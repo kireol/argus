@@ -1,0 +1,52 @@
+# Argus Demo — iOS (SwiftUI) example.
+#
+# Build and install the app on a booted simulator, start WebDriverAgent, then
+# run from the repository root:
+#
+#     argus run --config examples/ios/argus.yaml
+#
+# See examples/ios/README.md for the full setup, and docs/ios.md for
+# WebDriverAgent itself.
+
+devices:
+
+  iphone:
+    type: ios
+    platform: ios
+    bundle_id: com.argus.demo
+    # WebDriverAgent. Simulators listen on localhost; for a physical device
+    # forward the port (`iproxy 8100 8100`) or use the device's Wi-Fi IP.
+    url: http://127.0.0.1:8100
+    # Enables log_contains. `booted` is the currently booted simulator; use
+    # `idevicesyslog -u <udid>` for a physical device.
+    log_command: "xcrun simctl spawn booted log stream --style compact --predicate 'process == \"ArgusDemo\"'"
+    # The app's own test HTTP server (debug builds only). The simulator shares
+    # the Mac's network stack, so no port forwarding is needed.
+    instrumentation:
+      base_url: http://127.0.0.1:8085
+
+# Tap targets, in *screenshot pixels*.
+#
+# The app lays its controls out at fixed points on a 393 x 852 pt screen
+# (iPhone 15); Argus taps screenshot pixels, which on a 3x device are those
+# points multiplied by 3. Running on a simulator with a different scale? Change
+# the multiplier here and nothing else — README.md has the table.
+variables:
+  plus_x: 588            # 196 pt
+  plus_y: 1260           # 420 pt
+  settings_x: 588        # 196 pt
+  settings_y: 1560       # 520 pt
+  back_x: 588            # 196 pt
+  back_y: 1560           # 520 pt
+  theme_toggle_x: 588    # 196 pt
+  theme_toggle_y: 900    # 300 pt
+  swatch_x: 900          # 300 pt
+  swatch_y: 360          # 120 pt
+  light_swatch: "#2ecc71"
+  dark_swatch: "#8e44ad"
+
+test_paths:
+  - examples/ios/tests
+
+results:
+  retain_on_success: false
