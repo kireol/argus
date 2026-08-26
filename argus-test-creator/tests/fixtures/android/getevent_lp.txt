@@ -1,0 +1,24 @@
+add device 1: /dev/input/event5
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_VOLUMEUP          KEY_POWER
+  input props:
+    <none>
+add device 2: /dev/input/event2
+  name:     "sec_touchscreen"
+  events:
+    KEY (0001): BTN_TOUCH             BTN_TOOL_FINGER
+    ABS (0003): ABS_MT_SLOT           : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 4095, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 4095, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+                ABS_MT_PRESSURE       : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 3: /dev/input/event3
+  name:     "uinput-fpc"
+  events:
+    KEY (0001): KEY_UP                KEY_DOWN
+  input props:
+    <none>

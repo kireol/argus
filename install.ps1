@@ -1,8 +1,9 @@
-# Universal Test Framework installer (Windows PowerShell).
+# Argus installer (Windows PowerShell): installs the Argus engine (argus\) and
+# the Argus Test Creator (argus-test-creator\) into one shared virtual environment.
 #
 # Usage:
 #   .\install.ps1          # standard installation
-#   .\install.ps1 -Dev     # development installation (argus[dev])
+#   .\install.ps1 -Dev     # development installation (dev extras of both projects)
 #
 # Safe to run repeatedly: an existing installation is upgraded in place.
 # Requires no administrator privileges. Never modifies user configuration.
@@ -16,7 +17,8 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VenvDir = Join-Path $RepoRoot ".venv"
 $MinPythonMinor = 12
-$Extras = if ($Dev) { "yocto,ocr,dev" } else { "yocto,ocr" }
+$ArgusExtras = if ($Dev) { "yocto,ocr,dev" } else { "yocto,ocr" }
+$CreatorExtras = if ($Dev) { "ui,dev" } else { "ui" }
 
 function Write-Ok($msg)   { Write-Host "  " -NoNewline; Write-Host "OK " -ForegroundColor Green -NoNewline; Write-Host $msg }
 function Write-Warn($msg) { Write-Host "  " -NoNewline; Write-Host "!  " -ForegroundColor Yellow -NoNewline; Write-Host $msg }
@@ -31,8 +33,8 @@ function Fail($msg) {
 }
 
 Write-Host ""
-Write-Host "Universal Test Framework - installer"
-Write-Host "------------------------------------"
+Write-Host "Argus - installer (engine + Test Creator)"
+Write-Host "-----------------------------------------"
 Write-Host ""
 Write-Host "Platform: Windows $([System.Environment]::OSVersion.Version) ($env:PROCESSOR_ARCHITECTURE)"
 
@@ -77,7 +79,7 @@ Install Python 3.$MinPythonMinor+ from https://www.python.org/downloads/
 
 # ------------------------------------------------------------------- install
 Write-Host ""
-Write-Host "Installing framework..."
+Write-Host "Installing argus and argus-test-creator..."
 Set-Location $RepoRoot
 
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -85,7 +87,7 @@ $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 if ($Uv) {
     & $Uv.Source venv --quiet --allow-existing --python ">=3.$MinPythonMinor" $VenvDir
     if ($LASTEXITCODE -ne 0) { Fail "Could not create the virtual environment with uv." }
-    & $Uv.Source pip install --quiet -p $VenvPython -e ".[$Extras]"
+    & $Uv.Source pip install --quiet -p $VenvPython -e ".\argus[$ArgusExtras]" -e ".\argus-test-creator[$CreatorExtras]"
     if ($LASTEXITCODE -ne 0) { Fail "Dependency installation failed. Check network access / package index configuration." }
 } else {
     if (-not (Test-Path $VenvPython)) {
@@ -94,18 +96,22 @@ if ($Uv) {
     }
     & $VenvPython -m pip install --quiet --upgrade pip
     if ($LASTEXITCODE -ne 0) { Fail "Could not upgrade pip inside the virtual environment." }
-    & $VenvPython -m pip install --quiet -e ".[$Extras]"
+    & $VenvPython -m pip install --quiet -e ".\argus[$ArgusExtras]" -e ".\argus-test-creator[$CreatorExtras]"
     if ($LASTEXITCODE -ne 0) { Fail "Dependency installation failed. Check network access / package index configuration." }
 }
-Write-Ok "Framework and dependencies installed (extras: $Extras)"
+Write-Ok "argus[$ArgusExtras] and argus-test-creator[$CreatorExtras] installed"
 
 # ------------------------------------------------------- launcher (user-level)
 $BinDir = Join-Path $env:LOCALAPPDATA "argus\bin"
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 $UtfExe = Join-Path $VenvDir "Scripts\argus.exe"
+$CreatorExe = Join-Path $VenvDir "Scripts\argus-test-creator.exe"
 $Launcher = Join-Path $BinDir "argus.cmd"
 "@echo off`r`n`"$UtfExe`" %*" | Set-Content -Path $Launcher -Encoding ASCII
 Write-Ok "Launcher installed: $Launcher"
+$CreatorLauncher = Join-Path $BinDir "argus-test-creator.cmd"
+"@echo off`r`n`"$CreatorExe`" %*" | Set-Content -Path $CreatorLauncher -Encoding ASCII
+Write-Ok "Launcher installed: $CreatorLauncher"
 
 # Add BinDir to the *user* PATH if missing (never the system PATH).
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -114,7 +120,7 @@ if ($userPath -notlike "*$BinDir*") {
     Write-Warn "Added $BinDir to your user PATH. Open a NEW terminal to use 'argus'."
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "results") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "argus\results") | Out-Null
 Write-Ok "Result directory ready"
 
 # ---------------------------------------------------------------- health check
@@ -130,18 +136,23 @@ if ($LASTEXITCODE -eq 0) {
 } else {
     Write-Warn "Framework validation reported issues - run 'argus validate --framework-only' for details."
 }
+& $CreatorExe --help | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "The argus-test-creator command does not run." }
+Write-Ok "argus-test-creator runs"
 
 # --------------------------------------------------------------------- summary
 Write-Host ""
 Write-Host "------------------------------------"
 Write-Host "INSTALLATION COMPLETE" -ForegroundColor Green
 Write-Host ""
-Write-Host "The argus command is installed at: $Launcher"
+Write-Host "Commands installed in ${BinDir}: argus, argus-test-creator"
 Write-Host "$BinDir has been added to your user PATH; if 'argus' is not recognized,"
 Write-Host "open a NEW terminal or add $BinDir to your PATH manually."
 Write-Host ""
 Write-Host "Next steps (in a new terminal):"
+Write-Host "    cd argus"
 Write-Host "    argus init        # create your configuration"
 Write-Host "    argus validate    # check your environment"
 Write-Host "    argus run --config config\fake.yaml    # demo run (no hardware needed)"
+Write-Host "    argus-test-creator demo                # open the Test Creator on the demo target"
 Write-Host ""
