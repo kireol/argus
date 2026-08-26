@@ -6,7 +6,8 @@
 #       with:
 #         suite: pr
 #
-# The action installs Argus from this repository, runs `argus ci run` with the
+# The action installs Argus from the `argus/` project of this repository (a
+# monorepo that also holds the Argus Test Creator), runs `argus ci run` with the
 # inputs below, uploads `argus-results/` as a workflow artifact, and exposes the
 # run status and report paths as outputs. All test-execution logic lives in the
 # Argus CLI; this file only wires inputs to flags. It is designed to be moved
@@ -48,9 +49,13 @@ inputs:
     required: false
     default: ""
   output-dir:
-    description: Artifact directory written by Argus.
+    description: Artifact directory written by Argus (relative to `working-directory`).
     required: false
     default: "argus-results"
+  working-directory:
+    description: Directory to run `argus ci run` from; relative config/test paths resolve against it (monorepos).
+    required: false
+    default: "."
   upload-artifacts:
     description: Upload the artifact directory with actions/upload-artifact.
     required: false
@@ -92,6 +97,9 @@ outputs:
   report-html:
     description: Path to report.html.
     value: ${{ steps.run.outputs.report-html }}
+  output-dir:
+    description: Absolute path of the artifact directory.
+    value: ${{ steps.run.outputs.output-dir }}
 
 runs:
   using: composite
@@ -111,15 +119,16 @@ runs:
       run: |
         set -euo pipefail
         if [ -n "$ARGUS_EXTRAS" ]; then
-          python -m pip install -q "${ARGUS_ACTION_PATH}[${ARGUS_EXTRAS}]"
+          python -m pip install -q "${ARGUS_ACTION_PATH}/argus[${ARGUS_EXTRAS}]"
         else
-          python -m pip install -q "${ARGUS_ACTION_PATH}"
+          python -m pip install -q "${ARGUS_ACTION_PATH}/argus"
         fi
         argus version
 
     - name: Run Argus
       id: run
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ARGUS_SUITE: ${{ inputs.suite }}
         ARGUS_CONFIG: ${{ inputs.config }}
@@ -148,13 +157,16 @@ runs:
         code=$?
         set -e
 
+        # Outputs are absolute so callers need not know working-directory.
+        out_dir=$(python -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$ARGUS_OUTPUT_DIR")
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        echo "report-json=$ARGUS_OUTPUT_DIR/report.json" >> "$GITHUB_OUTPUT"
-        echo "junit-xml=$ARGUS_OUTPUT_DIR/junit.xml" >> "$GITHUB_OUTPUT"
-        echo "report-html=$ARGUS_OUTPUT_DIR/report.html" >> "$GITHUB_OUTPUT"
+        echo "output-dir=$out_dir" >> "$GITHUB_OUTPUT"
+        echo "report-json=$out_dir/report.json" >> "$GITHUB_OUTPUT"
+        echo "junit-xml=$out_dir/junit.xml" >> "$GITHUB_OUTPUT"
+        echo "report-html=$out_dir/report.html" >> "$GITHUB_OUTPUT"
         status="unknown"
-        if [ -f "$ARGUS_OUTPUT_DIR/report.json" ]; then
-          status=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['run']['status'])" "$ARGUS_OUTPUT_DIR/report.json" 2>/dev/null || echo unknown)
+        if [ -f "$out_dir/report.json" ]; then
+          status=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['run']['status'])" "$out_dir/report.json" 2>/dev/null || echo unknown)
         fi
         echo "status=$status" >> "$GITHUB_OUTPUT"
         exit "$code"
@@ -164,5 +176,5 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ inputs.output-dir }}
+        path: ${{ steps.run.outputs.output-dir || inputs.output-dir }}
         if-no-files-found: ignore

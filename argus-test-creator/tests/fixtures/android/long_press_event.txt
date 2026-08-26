@@ -1,0 +1,10 @@
+[   30.000000] /dev/input/event2: EV_ABS       ABS_MT_TRACKING_ID   0000002c
+[   30.000000] /dev/input/event2: EV_KEY       BTN_TOUCH            DOWN
+[   30.000000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_X    00000300
+[   30.000000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_Y    00000300
+[   30.000000] /dev/input/event2: EV_SYN       SYN_REPORT           00000000
+[   30.400000] /dev/input/event2: EV_ABS       ABS_MT_POSITION_X    00000301
+[   30.400000] /dev/input/event2: EV_SYN       SYN_REPORT           00000000
+[   30.900000] /dev/input/event2: EV_ABS       ABS_MT_TRACKING_ID   ffffffff
+[   30.900000] /dev/input/event2: EV_KEY       BTN_TOUCH            UP
+[   30.900000] /dev/input/event2: EV_SYN       SYN_REPORT           00000000
