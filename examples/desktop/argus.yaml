@@ -1,0 +1,29 @@
+# Argus Demo desktop example. Start the example backend first:
+#     python examples/backend/server.py
+# then, from the repository root, with ARGUS_PYTHON pointing at a Python
+# that has "argus[desktop,ocr]" installed (see README.md):
+#     export ARGUS_PYTHON=$(pwd)/.venv/bin/python
+#     argus run --config examples/desktop/argus.yaml
+backend:
+  base_url: http://127.0.0.1:8765
+  state_endpoint: /api/state
+  health_endpoint: /health
+
+devices:
+  desktop_app:
+    type: desktop
+    command: ${ARGUS_PYTHON:-python3}
+    args: [examples/desktop/app.py]
+    startup_wait: 2s
+    # [0, 0, 800, 600] matches the window's own geometry (800x600+0+0). On
+    # macOS the global menu bar overlaps the top of the primary display, so
+    # if screenshots look shifted, crop below it instead:
+    #   region: [0, 25, 800, 600]
+    # See README.md "Troubleshooting" for details.
+    region: [0, 0, 800, 600]
+    instrumentation:
+      base_url: http://127.0.0.1:8085
+
+test_paths: [examples/desktop/tests]
+results:
+  retain_on_success: false
