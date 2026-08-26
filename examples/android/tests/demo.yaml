@@ -174,8 +174,10 @@ tests:
   - id: AND-007
     name: Dark theme changes the swatch colour
     description: >
-      Toggling "Dark theme" in Settings switches the colour swatch from
-      green to purple.
+      Toggling "Dark theme" in Settings and returning Home (via BACK)
+      switches the colour swatch from green to purple. The swatch only
+      exists in the Home layout, so the theme change is confirmed after
+      navigating back.
     feature: Demo
     tags: [visual]
     platforms: [android]
@@ -193,6 +195,13 @@ tests:
       - action: device.tap
         x: 540
         y: 700
+      - action: device.key
+        key: BACK
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
       - action: wait_until
         condition:
           type: pixel_matches
