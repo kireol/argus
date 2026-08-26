@@ -72,7 +72,7 @@ def settle(session: RecordingSession, timeout: float = 30) -> None:
 def argus_executable() -> str:
     candidates = [
         os.environ.get("ARGUS_EXECUTABLE"),
-        str(Path(__file__).resolve().parents[2] / "argus" / ".venv" / "bin" / "argus"),
+        str(Path(__file__).resolve().parents[2] / ".venv" / "bin" / "argus"),  # monorepo root venv
     ]
     for candidate in candidates:
         if candidate and Path(candidate).is_file():

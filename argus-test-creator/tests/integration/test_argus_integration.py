@@ -8,14 +8,18 @@ from argus_test_creator.app.demo_flow import run_demo_flow
 from argus_test_creator.argus_schema import ACTIONS, CONDITIONS
 from argus_test_creator.core.errors import ArgusIntegrationError
 from argus_test_creator.integrations.argus import ArgusIntegration, discover_argus
+from argus_test_creator.integrations.argus import integration as integration_module
 from argus_test_creator.project import CreatorProject
 
 pytestmark = pytest.mark.integration
 
 
-def test_discovery_and_missing(tmp_path, argus_executable):
+def test_discovery_and_missing(tmp_path, argus_executable, monkeypatch):
     info = discover_argus(configured=argus_executable)
     assert info is not None and info.source == "configured" and info.version
+    # The interpreter-prefix fallback would find argus in the shared monorepo venv;
+    # point it at an empty prefix so "nothing installed" is what we actually test.
+    monkeypatch.setattr(integration_module.sys, "prefix", str(tmp_path))
     assert discover_argus(configured=tmp_path / "nope", env={"PATH": str(tmp_path)}) is None
     integration = ArgusIntegration(executable=tmp_path / "nope")
     integration._info = None

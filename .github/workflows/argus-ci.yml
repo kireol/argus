@@ -20,8 +20,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -q -e ".[dev]"
+      - run: python -m pip install -q -e "./argus[dev]"
       - run: python -m pytest tests/ci tests/unit/test_github_action.py -q
+        working-directory: argus
+
+  creator-unit:
+    name: Test Creator unit tests
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -q -e "./argus-test-creator[dev]"
+      - run: python -m pytest tests/unit -q
+        working-directory: argus-test-creator
 
   action-success:
     name: Action — successful run
@@ -31,7 +46,7 @@ jobs:
       - id: argus
         uses: ./
         with:
-          config: examples/ci/argus-ci.yml
+          config: argus/examples/ci/argus-ci.yml
           suite: pr
           artifact-name: argus-results-success
       - name: Verify outputs and artifacts
@@ -53,7 +68,7 @@ jobs:
         run: |
           mkdir -p /tmp/argus-fail
           cat > /tmp/argus-fail/config.yml <<'YAML'
-          extends: ${{ github.workspace }}/config/fake.yaml
+          extends: ${{ github.workspace }}/argus/config/fake.yaml
           test_paths: [/tmp/argus-fail/tests]
           YAML
           mkdir -p /tmp/argus-fail/tests
@@ -92,7 +107,7 @@ jobs:
         uses: ./
         continue-on-error: true
         with:
-          config: examples/ci/argus-ci.yml
+          config: argus/examples/ci/argus-ci.yml
           suite: does-not-exist
           upload-artifacts: false
       - run: |
