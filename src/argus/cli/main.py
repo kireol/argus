@@ -620,6 +620,13 @@ def mcp(
         raise typer.Exit(2) from exc
 
 
+# -- ci --------------------------------------------------------------------------------------------
+
+from argus.cli.ci import ci_app  # noqa: E402 - registered after the root app exists
+
+app.add_typer(ci_app, name="ci", rich_help_panel=None)
+
+
 # -- misc ------------------------------------------------------------------------------------------
 
 

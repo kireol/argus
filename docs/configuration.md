@@ -141,6 +141,35 @@ mcp:                         # `argus mcp` (see mcp.md); flags override these
     max_wait: 10m
 ```
 
+## CI/CD (`ci:`)
+
+`argus ci run` reads an optional `ci:` section (every key has a default):
+
+```yaml
+ci:
+  enabled: true
+  provider: auto            # auto | github | gitlab | jenkins | azure | generic | local
+  suites:                   # named selection policies (tags/features/platforms/tests, extends)
+    pr: {tags: [smoke]}
+    merge: {extends: pr, tags: [critical]}
+  retry: {enabled: false, max_attempts: 2, on: [timeout, device_error, connection_error, screenshot_capture_error]}
+  execution: {workers: 1, strategy: balanced, fail_fast: false}
+  artifacts: {enabled: true, directory: argus-results, retain_on_success: true, save_comparisons: false}
+  policy:
+    required: []            # suites whose selected tests must all pass
+    failures: {action: fail}          # fail | warn | ignore
+    visual_regression: {action: fail}
+    known_failure: {action: warn}
+    flaky: {action: warn}
+  known_failures: []        # - {test: MOV-002, reason: "...", platform: yocto}
+  reporting: {summary: true, annotations: true, max_annotations: 20}
+```
+
+Invalid values (unknown suite, `max_attempts: many`, unknown policy action,
+unknown provider, `workers: 0`, malformed YAML) fail before any test runs
+with the configuration path and the allowed values. See [ci-cd.md](ci-cd.md)
+and [`examples/ci/argus-ci.yml`](../examples/ci/argus-ci.yml).
+
 ## Extends (config overlays)
 
 A config may declare `extends: other.yaml` (path relative to the declaring

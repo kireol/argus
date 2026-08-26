@@ -3,12 +3,37 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from argus.models.results import RunResult, TestStatus
+from argus.models.results import RunResult, TestResult, TestStatus
+
+CaseProperties = Callable[[TestResult], Mapping[str, str]]
 
 
-def write_junit_report(result: RunResult, path: Path) -> Path:
+def _add_properties(parent: ET.Element, properties: Mapping[str, str]) -> None:
+    if not properties:
+        return
+    container = ET.SubElement(parent, "properties")
+    for name, value in properties.items():
+        prop = ET.SubElement(container, "property")
+        prop.set("name", name)
+        prop.set("value", value)
+
+
+def write_junit_report(
+    result: RunResult,
+    path: Path,
+    *,
+    properties: Mapping[str, str] | None = None,
+    case_properties: CaseProperties | None = None,
+) -> Path:
+    """Write JUnit XML.
+
+    ``properties`` are attached to every ``<testsuite>`` (e.g. CI metadata);
+    ``case_properties`` returns extra ``<property>`` entries per test case
+    (e.g. ``flaky``/``failure_category``). Both are optional and additive.
+    """
     suites = ET.Element("testsuites")
     features: dict[str, list] = {}
     for test in result.tests:
@@ -27,6 +52,7 @@ def write_junit_report(result: RunResult, path: Path) -> Path:
             "skipped", str(len([t for t in tests if t.status == TestStatus.SKIPPED]))
         )
         suite.set("time", f"{sum(t.duration for t in tests):.3f}")
+        _add_properties(suite, properties or {})
 
         for test in tests:
             case = ET.SubElement(suite, "testcase")
@@ -34,6 +60,8 @@ def write_junit_report(result: RunResult, path: Path) -> Path:
             case.set("name", f"{test.test_id}: {name}")
             case.set("classname", f"{feature}.{test.test_id}")
             case.set("time", f"{test.duration:.3f}")
+            if case_properties is not None:
+                _add_properties(case, case_properties(test))
             if test.status == TestStatus.FAILED:
                 failure = ET.SubElement(case, "failure")
                 failure.set("message", (test.error or "test failed")[:500])

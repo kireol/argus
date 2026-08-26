@@ -34,6 +34,7 @@ class FakeDevice(Device):
         screenshots: list[Image | str | Path] | None = None,
         screenshot_dir: str | Path | None = None,
         fail_screenshot: bool = False,
+        fail_first_screenshots: int = 0,
         available: bool = True,
         platform: str = "fake",
         render: dict[str, Any] | None = None,
@@ -45,6 +46,8 @@ class FakeDevice(Device):
         self._render = render
         self._state_provider: Callable[[], dict[str, Any]] | None = None
         self.fail_screenshot = fail_screenshot
+        # Fail the first N screenshot calls (transient failure; exercises retries).
+        self.fail_first_screenshots = fail_first_screenshots
         self.available = available
         self._platform = platform
         self.connected = False
@@ -70,6 +73,7 @@ class FakeDevice(Device):
             screenshots=options.get("screenshots"),
             platform=config.effective_platform,
             render=options.get("render"),
+            fail_first_screenshots=int(options.get("fail_first_screenshots", 0) or 0),
         )
 
     def bind_state_provider(self, provider: Callable[[], dict[str, Any]]) -> None:
@@ -136,6 +140,11 @@ class FakeDevice(Device):
         if self.fail_screenshot:
             raise ScreenshotError(f"Fake device {self.name!r}: screenshot failure injected.")
         self.screenshot_count += 1
+        if self.screenshot_count <= self.fail_first_screenshots:
+            raise ScreenshotError(
+                f"Fake device {self.name!r}: transient screenshot failure "
+                f"({self.screenshot_count}/{self.fail_first_screenshots})."
+            )
         if self._render is not None and self._state_provider is not None:
             return self._render_state()
         source: Image | str | Path
