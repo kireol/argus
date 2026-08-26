@@ -449,3 +449,105 @@ def test_feature_teardown_failure_does_not_fail_tests(tmp_path):
     write_suite_with_features(tmp_path, [passing_test("P-001")], features)
     result = TestRunner(config).run()
     assert result.status == RunStatus.PASSED
+
+
+# -- suite-level setup / teardown ------------------------------------------------------
+
+
+def write_suite_with_lifecycle(tmp_path: Path, tests: list[dict], suite: dict,
+                               features: dict | None = None) -> None:
+    suites = tmp_path / "suites"
+    suites.mkdir(exist_ok=True)
+    payload = {"suite": suite, "tests": tests}
+    if features:
+        payload["features"] = features
+    (suites / "suite.yaml").write_text(yaml.safe_dump(payload))
+
+
+def test_suite_setup_runs_once_before_everything_and_teardown_last(tmp_path):
+    config = build_config(tmp_path)
+    suite = {
+        "setup": [{"action": "backend.set", "data": {"movieId": 123}}],
+        "teardown": [{"action": "backend.set", "data": {"movieId": None}}],
+    }
+    features = {"Feature": {"setup": [{"action": "log", "message": "feature"}],
+                            "teardown": [{"action": "log", "message": "feature"}]}}
+    write_suite_with_lifecycle(tmp_path, [passing_test("P-001"), passing_test("P-002")],
+                               suite, features)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run()
+    assert result.status == RunStatus.PASSED
+    names = [type(e).__name__ for e in seen]
+    assert names.count("SuiteSetupStarted") == 1 and names.count("SuiteTeardownCompleted") == 1
+    assert names.index("SuiteSetupCompleted") < names.index("FeatureSetupStarted")
+    assert names.index("SuiteTeardownStarted") > names.index("FeatureTeardownCompleted")
+    assert names.index("SuiteTeardownStarted") > max(
+        i for i, n in enumerate(names) if n == "TestPassed")
+    completed = next(e for e in seen if type(e).__name__ == "SuiteSetupCompleted")
+    assert completed.passed and [s.action for s in completed.steps] == ["backend.set"]
+
+
+def test_suite_setup_failure_fails_every_test_without_running_them(tmp_path):
+    config = build_config(tmp_path)
+    suite = {
+        "setup": [{"action": "verify",
+                   "condition": {"type": "image_present", "image": "movie_456.png"}}],
+        "teardown": [{"action": "backend.set", "data": {"movieId": None}}],
+        "device": "android",
+    }
+    write_suite_with_lifecycle(tmp_path, [passing_test("P-001"), passing_test("P-002")], suite)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run(
+        RunOptions(failure_policy=FailurePolicy(stop_on_failure=False))
+    )
+    assert result.status == RunStatus.FAILED
+    assert [t.status for t in result.tests] == [TestStatus.FAILED, TestStatus.FAILED]
+    assert all("Suite setup failed" in (t.error or "") for t in result.tests)
+    assert all(t.steps == [] for t in result.tests)
+    assert all(t.failure_category == "suite_setup" for t in result.tests)
+    names = [type(e).__name__ for e in seen]
+    assert "SuiteTeardownCompleted" in names  # teardown still runs
+    assert "FeatureSetupStarted" not in names  # nothing else ran
+
+
+def test_suite_teardown_runs_when_run_stops_early_and_failure_does_not_fail_tests(tmp_path):
+    config = build_config(tmp_path)
+    suite = {"teardown": [{"action": "verify",
+                           "condition": {"type": "image_present", "image": "movie_456.png"}}],
+             "device": "android"}
+    write_suite_with_lifecycle(tmp_path, [failing_test("F-001"), passing_test("P-002")], suite)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run(
+        RunOptions(failure_policy=FailurePolicy(stop_on_failure=True))
+    )
+    assert result.stopped_early
+    teardown = next(e for e in seen if type(e).__name__ == "SuiteTeardownCompleted")
+    assert not teardown.passed and teardown.error
+    assert [t.status for t in result.tests] == [TestStatus.FAILED, TestStatus.SKIPPED]
+
+
+def test_suite_lifecycle_skipped_when_no_test_selected(tmp_path):
+    config = build_config(tmp_path)
+    suite = {"setup": [{"action": "backend.set", "data": {"movieId": 123}}]}
+    write_suite_with_lifecycle(tmp_path, [passing_test("P-001")], suite)
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    TestRunner(config, events).run(RunOptions(filters=TestFilter(test_ids=["NOPE"])))
+    assert not [e for e in seen if type(e).__name__.startswith("Suite")]
+
+
+def test_suite_device_steps_need_a_device(tmp_path):
+    config = build_config(tmp_path)
+    suite = {"setup": [{"action": "device.tap", "x": 1, "y": 1}]}  # no device: bound
+    write_suite_with_lifecycle(tmp_path, [passing_test("P-001")], suite)
+    result = TestRunner(config).run(RunOptions(failure_policy=FailurePolicy(stop_on_failure=False)))
+    assert result.status == RunStatus.FAILED
+    assert "Suite setup failed" in (result.tests[0].error or "")
+    assert "needs a device" in (result.tests[0].error or "")

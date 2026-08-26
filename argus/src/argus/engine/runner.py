@@ -35,6 +35,10 @@ from argus.events.events import (
     FeatureSetupStarted,
     FeatureTeardownCompleted,
     FeatureTeardownStarted,
+    SuiteSetupCompleted,
+    SuiteSetupStarted,
+    SuiteTeardownCompleted,
+    SuiteTeardownStarted,
     TestFailed,
     TestPassed,
     TestRunCompleted,
@@ -52,7 +56,12 @@ from argus.models.results import (
     TestResult,
     TestStatus,
 )
-from argus.models.test_definition import FeatureDefinition, Step, TestDefinition
+from argus.models.test_definition import (
+    FeatureDefinition,
+    Step,
+    SuiteDefinition,
+    TestDefinition,
+)
 from argus.preflight.checks import build_preflight_checks
 from argus.preflight.runner import run_preflight
 from argus.utilities.variables import expand_variables
@@ -221,8 +230,18 @@ class TestRunner:
                 for platform in self._platforms_for(test, options.filters, session)
             ]
             lifecycle = _FeatureLifecycle(self, session, artifacts, suite, plan)
+            suite_lifecycle = _SuiteLifecycle(self, session, artifacts, suite.lifecycle)
+            suite_error: str | None = None
             try:
+                if tests:
+                    suite_error = suite_lifecycle.setup()
                 for test in tests:
+                    if suite_error is not None:
+                        for platform in self._platforms_for(test, options.filters, session):
+                            run_result.tests.append(
+                                self._suite_setup_failed(test, platform, suite_error)
+                            )
+                        continue
                     if not stopped and self._cancel_requested(options):
                         cancelled = True
                         stopped = True
@@ -254,6 +273,8 @@ class TestRunner:
                                 break
             finally:
                 lifecycle.close()
+                if tests:
+                    suite_lifecycle.teardown()
 
             if run_result.tests and artifacts.has_run_dir:
                 run_result.results_dir = str(artifacts.run_dir)
@@ -425,6 +446,25 @@ class TestRunner:
             status=TestStatus.FAILED,
             error=f"Feature setup failed: {error}",
             failure_category="feature_setup",
+        )
+        self.events.publish(TestFailed(result=result))
+        return result
+
+    def _suite_setup_failed(
+        self, test: TestDefinition, platform: str | None, error: str
+    ) -> TestResult:
+        """Record a test as failed because the suite's setup failed (not executed)."""
+        self.events.publish(
+            TestStarted(test_id=test.id, name=test.name, feature=test.feature, platform=platform)
+        )
+        result = TestResult(
+            test_id=test.id,
+            name=test.name,
+            feature=test.feature,
+            platform=platform,
+            status=TestStatus.FAILED,
+            error=f"Suite setup failed: {error}",
+            failure_category="suite_setup",
         )
         self.events.publish(TestFailed(result=result))
         return result
@@ -965,6 +1005,112 @@ class _FeatureLifecycle:
                 test_id=pseudo_test.id,
                 feature=feature.name,
                 platform=platform,
+                device=device_name,
+            ),
+            platform=platform,
+            device=device,
+            backend=session.backend if session.backend_available else None,
+            instrumentation=session.instrumentation(device_name) if device_name else None,
+            variables=dict(runner.config.variables),
+        )
+
+
+class _SuiteLifecycle:
+    """Runs the suite's ``setup`` once before the first selected test and its
+    ``teardown`` once at the very end (after every feature teardown), always."""
+
+    TEST_ID = "suite_setup"
+
+    def __init__(
+        self,
+        runner: TestRunner,
+        session: RunSession,
+        artifacts: ArtifactManager,
+        definition: SuiteDefinition | None,
+    ) -> None:
+        self._runner = runner
+        self._session = session
+        self._artifacts = artifacts
+        self._definition = definition
+        self._context: TestContext | None = None
+        self._started = False
+
+    def setup(self) -> str | None:
+        """Run suite setup; returns an error message when it failed."""
+        if self._definition is None or self._definition.empty:
+            return None
+        self._started = True
+        return self._run_phase("setup")
+
+    def teardown(self) -> None:
+        if not self._started:
+            return
+        self._started = False
+        self._run_phase("teardown")
+
+    def _run_phase(self, phase: str) -> str | None:
+        runner = self._runner
+        definition = self._definition
+        assert definition is not None
+        steps = definition.setup if phase == "setup" else definition.teardown
+        if not steps:
+            return None
+        device_name = definition.device
+        started_event = SuiteSetupStarted if phase == "setup" else SuiteTeardownStarted
+        completed_event = SuiteSetupCompleted if phase == "setup" else SuiteTeardownCompleted
+        runner.events.publish(started_event(device=device_name))
+        result = TestResult(
+            test_id=self.TEST_ID,
+            name=f"suite {phase}",
+            feature="Suite",
+            platform=None,
+            status=TestStatus.PASSED,
+        )
+        error: str | None = None
+        try:
+            context = self._context or self._context_for(device_name)
+            self._context = context
+            failed = runner._run_steps(
+                self._session, context, steps, result, phase, record_failure=(phase == "setup")
+            )
+            if failed is not None:
+                error = f"{failed.action} — {failed.message or 'step failed'}"
+            elif any(not s.passed for s in result.steps):
+                error = next(
+                    f"{s.action} — {s.message or 'step failed'}"
+                    for s in result.steps
+                    if not s.passed
+                )
+        except UTFError as exc:
+            error = str(exc)
+        if error is not None:
+            runner.log.warning("Suite %s failed: %s", phase, error)
+        runner.events.publish(
+            completed_event(device=device_name, passed=error is None, error=error,
+                            steps=list(result.steps))
+        )
+        return error
+
+    def _context_for(self, device_name: str | None) -> TestContext:
+        runner = self._runner
+        session = self._session
+        device = session.device(device_name) if device_name is not None else None
+        pseudo_test = TestDefinition(
+            id=self.TEST_ID,
+            name="suite lifecycle",
+            feature="Suite",
+            steps=[Step(action="log", message="suite")],  # type: ignore[call-arg]
+        )
+        platform = device.platform if device is not None else None
+        return TestContext(
+            config=runner.config,
+            test=pseudo_test,
+            conditions=session.conditions,
+            verifiers=session.verifiers,
+            events=runner.events,
+            artifacts=self._artifacts.for_test(self.TEST_ID),
+            logger=get_logger(
+                "argus.suite", test_id=self.TEST_ID, feature="Suite", platform=platform,
                 device=device_name,
             ),
             platform=platform,
