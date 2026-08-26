@@ -29,7 +29,7 @@ examples/ios/
 | An iOS 16+ simulator | Deployment target is iOS 16.0. | `xcrun simctl list devices available` |
 | WebDriverAgent | Argus talks to WDA's HTTP API directly; no Appium server. See [`docs/ios.md`](../../docs/ios.md). | `curl http://127.0.0.1:8100/status` |
 | `tesseract` | Seven of the nine tests use OCR (`text_present`). | `tesseract --version`, else `brew install tesseract` |
-| Argus | Run everything from the repository root. | `argus --version` |
+| Argus | Run everything from the repository root. | `.venv/bin/argus --version` |
 
 If `xcodebuild` reports *"tool 'xcodebuild' requires Xcode"*, you only have the
 Command Line Tools; install Xcode and run
@@ -120,15 +120,15 @@ own IP rather than `127.0.0.1`.
 From the repository root:
 
 ```bash
-argus run --config examples/ios/argus.yaml
+.venv/bin/argus run --config examples/ios/argus.yaml
 ```
 
 Useful variations:
 
 ```bash
-argus --dry-run --config examples/ios/argus.yaml   # validate config + tests only
-argus list --config examples/ios/argus.yaml        # show the nine tests
-argus run --config examples/ios/argus.yaml --tag smoke
+.venv/bin/argus --dry-run --config examples/ios/argus.yaml   # validate config + tests only
+.venv/bin/argus list --config examples/ios/argus.yaml        # show the nine tests
+.venv/bin/argus run --config examples/ios/argus.yaml --tag smoke
 ```
 
 ### Coordinates
@@ -185,7 +185,7 @@ thing the test is actually waiting for.
 | `Instrumentation unreachable: Connection refused` | The app is not running, or you installed a **Release** build (instrumentation is `#if DEBUG`). Check `curl http://127.0.0.1:8085/test/health`. |
 | `OCR unavailable: tesseract binary not found` | `brew install tesseract`. |
 | `did not return a session id` | `com.argus.demo` is not installed on the booted simulator. Re-run `xcrun simctl install booted …`. |
-| Taps land on the wrong control | The simulator is not a 3× 393 × 852 pt device, or the app rotated. Keep it in portrait, or take a screenshot (`argus run … ` saves one on failure), read the real pixel coordinates off it, and update `variables:` in `argus.yaml`. |
+| Taps land on the wrong control | The simulator is not a 3× 393 × 852 pt device, or the app rotated. Keep it in portrait, or take a screenshot (`.venv/bin/argus run … ` saves one on failure), read the real pixel coordinates off it, and update `variables:` in `argus.yaml`. |
 | `log_contains` never matches | `log_command` uses `booted`; make sure exactly one simulator is booted. Interpolated values are logged with `privacy: .public` — if you add log lines of your own, do the same or the unified log will print `<private>`. |
 | `pixel_matches` is off by a few | Raise `tolerance:` in `tests/demo.yaml` (it is 12). Colour management can shift a channel or two. |
 | Blank or black screenshots | Bring the Simulator window to the front and make sure the device is not locked. |

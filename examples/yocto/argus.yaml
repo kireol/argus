@@ -17,6 +17,8 @@ devices:
     # status/state on :8085, and also serves the current frame as a PNG at
     # GET /test/screen -- so a screenshot is just a loopback curl on the
     # device, regardless of whether the target uses fbdev/KMS/Weston/nothing.
+    # This curl runs ON THE TARGET over SSH, so the image must include the
+    # curl package (see README "Build" -- IMAGE_INSTALL:append = " curl").
     screenshot:
       command: "curl -s -o {path} http://127.0.0.1:8085/test/screen"
       remote_path: /tmp/argus_demo_screen.png

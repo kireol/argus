@@ -136,15 +136,15 @@ button.
 From the repository root:
 
 ```bash
-argus run --config examples/tvos/argus.yaml
+.venv/bin/argus run --config examples/tvos/argus.yaml
 ```
 
 Useful variants:
 
 ```bash
-argus --dry-run --config examples/tvos/argus.yaml   # validate config + tests, run nothing
-argus run --config examples/tvos/argus.yaml --tag smoke
-argus run --config examples/tvos/argus.yaml --test TV-007
+.venv/bin/argus --dry-run --config examples/tvos/argus.yaml   # validate config + tests, run nothing
+.venv/bin/argus run --config examples/tvos/argus.yaml --tag smoke
+.venv/bin/argus run --config examples/tvos/argus.yaml --test TV-007
 ```
 
 ## What the tests show

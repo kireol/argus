@@ -68,7 +68,7 @@ tests:
       Tapping "+" once increments the counter and updates the on-screen
       state.
     feature: Demo
-    tags: [smoke]
+    tags: [smoke, visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -93,7 +93,7 @@ tests:
       Tapping "+" three times shows "Count: 3" and logs the counter after
       each tap.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -122,7 +122,7 @@ tests:
     description: >
       Tapping "Settings" opens the settings screen.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -131,9 +131,11 @@ tests:
         x: 540
         y: 1250
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
       - action: verify
         condition:
@@ -147,7 +149,7 @@ tests:
       Incrementing the counter, opening Settings, then pressing BACK
       returns to Home with the counter preserved.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -159,9 +161,11 @@ tests:
         x: 540
         y: 1250
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
       - action: device.key
         key: BACK
@@ -179,7 +183,7 @@ tests:
       exists in the Home layout, so the theme change is confirmed after
       navigating back.
     feature: Demo
-    tags: [visual]
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -187,9 +191,11 @@ tests:
         x: 540
         y: 1250
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
     steps:
       - action: device.tap
@@ -224,7 +230,7 @@ tests:
       After incrementing the counter, resetting the app clears its data and
       shows "Count: 0" again.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
@@ -257,7 +263,7 @@ tests:
     description: >
       Capture a screenshot of the home screen as a documentation artifact.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [android]
     setup:
       - action: device.reset
