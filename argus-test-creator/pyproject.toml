@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "argus-test-creator"
-version = "1.2.1"
+version = "1.2.2"
 description = "Argus Test Creator — visual authoring of Argus YAML tests (recorder, wizard, editor)"
 readme = "README.md"
 license = "MIT"

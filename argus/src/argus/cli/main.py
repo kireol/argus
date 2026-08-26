@@ -626,6 +626,12 @@ from argus.cli.ci import ci_app  # noqa: E402 - registered after the root app ex
 
 app.add_typer(ci_app, name="ci", rich_help_panel=None)
 
+# -- stress ------------------------------------------------------------------------------------
+
+from argus.cli.stress import stress_app  # noqa: E402 - registered after the root app exists
+
+app.add_typer(stress_app, name="stress", rich_help_panel=None)
+
 
 # -- misc ------------------------------------------------------------------------------------------
 

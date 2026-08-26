@@ -74,6 +74,9 @@ def register_builtin_devices(registry: DeviceRegistry) -> None:
     registry.register("tvos_sim", TvosSimAdapter.from_config)
     registry.register("yocto", YoctoAdapter.from_config)
     registry.register("fake", FakeDevice.from_config)
+    from argus.stress.demo import register_demo_devices
+
+    register_demo_devices(registry)  # "stress_demo": the stress/chaos example application
 
 
 _default_registry = DeviceRegistry()
