@@ -12,7 +12,7 @@ pipx install 'argus-test-creator[ui,ocr,browser]'
 ## Standalone bundles (PyInstaller)
 
 ```bash
-uv pip install --python .venv/bin/python pyinstaller
+uv pip install --python ../.venv/bin/python pyinstaller
 scripts/build-package.sh          # → dist/ArgusTestCreator(.app|.exe|/)
 ```
 

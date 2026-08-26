@@ -5,7 +5,8 @@
 ## Discovery
 
 Order: configured path (`argus.executable`) → `ARGUS_EXECUTABLE` → `<project>/.venv/bin/argus`
-→ `PATH` → `<sys.prefix>/bin/argus`. Each candidate is probed with `--version`. If nothing is
+→ `PATH` → `<sys.prefix>/bin/argus`. Each candidate is probed with `--version`. In the
+monorepo install both commands share one `.venv/`, so the `sys.prefix` step always finds Argus. If nothing is
 found the Creator explains exactly how to configure it (`INSTALL_HINT`).
 
 ## Validation

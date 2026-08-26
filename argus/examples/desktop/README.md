@@ -9,9 +9,9 @@ All commands below are run **from the repository root**.
 
 ## Prerequisites
 
-- The repo's `.venv` set up per the top-level `README.md` (`./install.sh` /
+- The repo's `.venv` (at the repository root) set up per the top-level `README.md` (`./install.sh` /
   `.\install.ps1`, or `uv sync`).
-- Desktop + OCR extras: `uv pip install -e ".[desktop,ocr]"`.
+- Desktop + OCR extras: `uv pip install -p ../.venv/bin/python -e ".[desktop,ocr]"`.
 - [Tesseract](https://github.com/tesseract-ocr/tesseract) on `PATH` (used by
   the `text_present`/`text_not_present` conditions):
   `brew install tesseract` (macOS), `apt install tesseract-ocr` (Linux), or
@@ -93,7 +93,7 @@ Find out which you have before choosing a config, with the same
 interpreters/libraries the adapter itself uses:
 
 ```bash
-.venv/bin/python - <<'PY'
+../.venv/bin/python - <<'PY'
 import pyautogui
 logical = pyautogui.size()
 raw = pyautogui.screenshot().size
@@ -125,7 +125,7 @@ only the backend needs to already be running. The app command defaults to
 `argus[desktop,ocr]` installed) instead:
 
 ```bash
-export ARGUS_PYTHON=$(pwd)/.venv/bin/python
+export ARGUS_PYTHON=$(pwd)/../.venv/bin/python
 ```
 
 (both files use `${ARGUS_PYTHON:-python3}`, so this is optional if your
@@ -136,8 +136,8 @@ with CPython) since the app has no other dependencies.)
 With the backend running and `ARGUS_PYTHON` exported:
 
 ```bash
-.venv/bin/argus --dry-run --config examples/desktop/argus.yaml   # validates config + tests, touches nothing
-.venv/bin/argus run --config examples/desktop/argus.yaml
+../.venv/bin/argus --dry-run --config examples/desktop/argus.yaml   # validates config + tests, touches nothing
+../.venv/bin/argus run --config examples/desktop/argus.yaml
 # on a 2x/Retina display, use --config examples/desktop/argus.retina.yaml instead
 ```
 
@@ -225,7 +225,7 @@ bar and the window's own title bar both take up space above it, and how
 much varies by macOS version and window manager, so do not hardcode a
 specific offset. If tests fail with plausible-looking screenshots that
 seem shifted vertically or horizontally, measure the real offset instead
-of guessing: run any test (e.g. `.venv/bin/argus run --config examples/desktop/argus.yaml --test DSK-001`),
+of guessing: run any test (e.g. `../.venv/bin/argus run --config examples/desktop/argus.yaml --test DSK-001`),
 open a saved screenshot from `results/<run>/DSK-001_desktop/` (or
 temporarily set `results: {retain_on_success: false}` to `true` in the
 config to keep one from a passing run), and compare where the title/window
@@ -268,7 +268,7 @@ tap coordinates.
   to port 8085.
 - **`Application executable not found`** — `ARGUS_PYTHON` isn't exported
   (or points at a missing interpreter) and the default `python3` is not on
-  `PATH`; `export ARGUS_PYTHON=$(pwd)/.venv/bin/python` before running.
+  `PATH`; `export ARGUS_PYTHON=$(pwd)/../.venv/bin/python` before running.
 - **`region ... exceeds the screenshot`** — either the display's real
   resolution is smaller than the active config's `region` implies (e.g. a
   scaled-down VM/CI display; use a screen at least as large as `region`,
