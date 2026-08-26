@@ -1,0 +1,52 @@
+id: DEMO-001
+name: Search finds Batman Begins
+feature: Movies
+platforms:
+  - fake
+
+steps:
+  - action: device.tap
+    x: 200
+    y: 250
+
+  - action: device.tap
+    x: 200
+    y: 180
+
+  - action: device.tap
+    x: 300
+    y: 190
+
+  - action: device.key
+    name: Type 'Batman'
+    key: B
+
+  - action: device.key
+    key: a
+
+  - action: device.key
+    key: t
+
+  - action: device.key
+    key: m
+
+  - action: device.key
+    key: a
+
+  - action: device.key
+    key: n
+
+  - action: device.key
+    key: ENTER
+
+  - action: wait_until
+    condition:
+      type: image_present
+      image: batman_row_c7bc61f4.png
+      threshold: 0.9
+    timeout: 10s
+
+  - action: verify
+    condition:
+      type: text_present
+      text: Batman Begins
