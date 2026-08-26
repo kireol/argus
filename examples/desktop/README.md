@@ -18,6 +18,12 @@ All commands below are run **from the repository root**.
   the [Windows installer](https://github.com/UB-Mannheim/tesseract/wiki).
 - The example backend running (`examples/backend/server.py`, port 8765) —
   the desktop app polls it and the tests drive it with `backend.*` actions.
+- Know your display's pixel scale (1x/standard-DPI vs 2x/Retina/HiDPI) —
+  see "Measure your display" below — and pick `argus.yaml` or
+  `argus.retina.yaml` accordingly. **The committed defaults in `argus.yaml`
+  assume a 1x display and were verified on one; `argus.retina.yaml`'s
+  doubled values were derived by calculation, not verified on real Retina
+  hardware.**
 - **macOS only:** grant your terminal app **Screen Recording** and
   **Accessibility** permission (System Settings → Privacy & Security), then
   restart the terminal. Without Screen Recording, `pyautogui.screenshot()`
@@ -61,11 +67,55 @@ curl http://127.0.0.1:8085/test/status
 # {"application": "ArgusDemo", "version": "1.0.0", "ready": true, "screen": "home", "capabilities": ["status", "state"]}
 ```
 
+`ready` is a real readiness flag, not a constant: the instrumentation
+server starts before the tkinter window exists, so `ready` is `false` for
+a brief instant right after launch and flips to `true` once the window has
+been built and the event loop has completed an idle pass (see
+`DemoApp._mark_ready` in `app.py`) — by the time `startup_wait` (2s in
+`argus.yaml`) elapses it is always `true`.
+
 `Ctrl+Q` quits the app (so does closing the window).
+
+## Measure your display
+
+The `desktop` adapter's `region` and every `device.tap`/`pixel_matches`
+coordinate are **screenshot pixels** — the raw pixels pyautogui's
+`screenshot()` captures — not tkinter's logical points (see
+`docs/desktop.md` and `src/argus/adapters/desktop.py`, `_to_logical()`).
+On a 1x/standard-DPI display those are the same numbers as the app's own
+800×600 logical geometry; on a 2x/Retina display (common on Apple Silicon
+Macs) the raw screenshot is twice as many pixels in each dimension, so the
+1x coordinates land at half the intended point and a `region` sized for
+800×600 only captures the window's top-left quadrant.
+
+Find out which you have before choosing a config, with the same
+interpreters/libraries the adapter itself uses:
+
+```bash
+.venv/bin/python - <<'PY'
+import pyautogui
+logical = pyautogui.size()
+raw = pyautogui.screenshot().size
+print(f"logical={logical} raw={raw} ratio={raw[0] / logical[0]}")
+PY
+```
+
+- `ratio` ≈ `1.0` → use `examples/desktop/argus.yaml` (the default).
+- `ratio` ≈ `2.0` → use `examples/desktop/argus.retina.yaml`.
+
+Both files declare the same coordinates once, in a `variables:` block, so
+switching displays is a matter of pointing `--config` at the other file —
+no per-test editing. **The 1x values in `argus.yaml` were verified on a
+real 1x display (see "Run the tests" below); the 2x values in
+`argus.retina.yaml` were derived by doubling them and have not been
+verified against real Retina hardware** — re-run the measurement above
+after a run to confirm, and adjust `argus.retina.yaml`'s `variables:`/
+`region` if your Retina display's actual ratio differs from exactly 2.0.
 
 ## Run the tests
 
-`argus.yaml` launches `app.py` itself as the device under test (via
+`argus.yaml` (or `argus.retina.yaml`, per "Measure your display" above)
+launches `app.py` itself as the device under test (via
 `devices.desktop_app.command`), so you do not need to start it by hand —
 only the backend needs to already be running. The app command defaults to
 `python3`; point it at this repo's own interpreter (which has
@@ -75,7 +125,7 @@ only the backend needs to already be running. The app command defaults to
 export ARGUS_PYTHON=$(pwd)/.venv/bin/python
 ```
 
-(`argus.yaml` uses `${ARGUS_PYTHON:-python3}`, so this is optional if your
+(both files use `${ARGUS_PYTHON:-python3}`, so this is optional if your
 default `python3` already resolves to an interpreter that can run
 `app.py` — it doesn't need Argus itself installed, only `tkinter` (bundled
 with CPython) since the app has no other dependencies.)
@@ -85,6 +135,7 @@ With the backend running and `ARGUS_PYTHON` exported:
 ```bash
 .venv/bin/argus --dry-run --config examples/desktop/argus.yaml   # validates config + tests, touches nothing
 .venv/bin/argus run --config examples/desktop/argus.yaml
+# on a 2x/Retina display, use --config examples/desktop/argus.retina.yaml instead
 ```
 
 Expected: `Executed: 9`, `Passed: 9`, `Failed: 0`. (On a machine that has
@@ -94,19 +145,21 @@ already granted Screen Recording/Accessibility permission — see
 ## What the tests show
 
 `examples/desktop/tests/demo.yaml` defines `DSK-001`..`DSK-009` under the
-`Demo` feature, driving the app with `device.tap` at the pixel coordinates
-from the widget layout below (screenshot pixels, matching `region` in
-`argus.yaml`):
+`Demo` feature, driving the app with `device.tap` at `${var}` coordinates
+resolved from whichever config's `variables:` block is active (see
+"Measure your display" above) — no coordinate is hardcoded in the test
+file itself. The table below gives the widget layout in 1x screenshot
+pixels (`argus.yaml`'s values; `argus.retina.yaml` doubles all of them):
 
-| Widget | Position | Screen |
-| --- | --- | --- |
-| Title "Argus Demo" / "Settings" (24pt) | top-left, `(20, 20)` | both |
-| `Count: N` label | centred at `(400, 180)` | home |
-| `+` button | centred at `(400, 300)` | home |
-| `Settings` button | centred at `(400, 400)` | home |
-| Colour swatch (160×80 canvas) | top-left corner `(600, 60)` | home |
-| `Dark theme` checkbutton | centred at `(400, 250)` | settings |
-| `Back` button | centred at `(400, 400)` | settings |
+| Widget | Position (1x) | Variable(s) | Screen |
+| --- | --- | --- | --- |
+| Title "Argus Demo" / "Settings" (24pt) | top-left, `(20, 20)` | — (not tapped) | both |
+| `Count: N` label | centred at `(400, 180)` | — (not tapped) | home |
+| `+` button | centred at `(400, 300)` | `tap_plus_x`/`tap_plus_y` | home |
+| `Settings` button | centred at `(400, 400)` | `tap_settings_x`/`tap_settings_y` | home |
+| Colour swatch (160×80 canvas) | top-left corner `(600, 60)` | `swatch_pixel_x`/`swatch_pixel_y` reads a point inside it, `(680, 100)` | home |
+| `Dark theme` checkbutton | centred at `(400, 250)` | `tap_dark_toggle_x`/`tap_dark_toggle_y` | settings |
+| `Back` button | centred at `(400, 400)` | `tap_back_x`/`tap_back_y` | settings |
 
 Tests:
 
@@ -125,9 +178,11 @@ Tests:
   (also at `(400, 400)`, now on the settings screen) returns to `Count: 1`
   — the counter survives navigation. Tagged `visual`, `ocr`.
 - **DSK-007** — toggling `Dark theme` at `(400, 250)` turns the swatch
-  purple (`#8e44ad`), checked with `pixel_matches` at `(680, 100)` (inside
-  the swatch) — pixel-only, so tagged `visual` without `ocr`. Teardown
-  issues `device.reset` to restore the light theme.
+  purple (`#8e44ad`); the swatch canvas only exists on the Home screen (see
+  `app.py`), so the test taps `Back` first, then checks `pixel_matches` at
+  `(680, 100)` (inside the swatch) once Home is showing again — pixel-only,
+  so tagged `visual` without `ocr`. Teardown issues `device.reset` to
+  restore the light theme.
 - **DSK-008** — `backend.set {counter: 42}` is picked up by the app's
   500ms backend poll and shown as `Count: 42`. Tagged `visual`, `ocr`.
 - **DSK-009** — after incrementing to `1`, resetting the backend and
@@ -157,18 +212,25 @@ the app fresh, since no `reset_command` is configured) so each test passes
 independently of run order or `--test`/`--tag` filtering, per "Isolation"
 in `docs/test-authoring.md`.
 
-### `region` and the macOS menu bar
+### `region` and the macOS menu bar / title bar
 
-`argus.yaml` sets `region: [0, 0, 800, 600]`, matching the window's own
-`800x600+0+0` geometry. On macOS the global menu bar overlaps the top of
-the primary display, so depending on how your window manager honors
-`+0+0` (tkinter sometimes places content just *below* the menu bar rather
-than under it), screenshots and tap coordinates can end up shifted by
-roughly the menu bar's height. If tests fail with plausible-looking
-screenshots that seem shifted vertically, change `region` to
-`region: [0, 25, 800, 600]` (or whatever offset `screenshot` artifacts in
-`results/` show) — see `docs/desktop.md` for how `region` crops the
-screenshot and offsets tap coordinates.
+`argus.yaml` sets `region: [0, 0, 800, 600]` (doubled in
+`argus.retina.yaml`), matching the window's own `800x600+0+0` geometry. On
+macOS, the window's actual content area does not necessarily start at
+screen pixel `(0, 0)` even when its geometry says `+0+0` — the global menu
+bar and the window's own title bar both take up space above it, and how
+much varies by macOS version and window manager, so do not hardcode a
+specific offset. If tests fail with plausible-looking screenshots that
+seem shifted vertically or horizontally, measure the real offset instead
+of guessing: run any test (e.g. `argus run --config examples/desktop/argus.yaml --test DSK-001`),
+open a saved screenshot from `results/<run>/DSK-001_desktop/` (or
+temporarily set `results: {retain_on_success: false}` to `true` in the
+config to keep one from a passing run), and compare where the title/window
+content actually falls against `region`'s `[x, y, width, height]`; adjust
+`region` (and, if the window is offset rather than just cropped, every
+`variables:` coordinate by the same amount) to match what you measured —
+see `docs/desktop.md` for how `region` crops the screenshot and offsets
+tap coordinates.
 
 ## Troubleshooting
 
@@ -204,9 +266,17 @@ screenshot and offsets tap coordinates.
 - **`Application executable not found`** — `ARGUS_PYTHON` isn't exported
   (or points at a missing interpreter) and the default `python3` is not on
   `PATH`; `export ARGUS_PYTHON=$(pwd)/.venv/bin/python` before running.
-- **`region ... exceeds the screenshot`** — the display's real resolution
-  is smaller than the region `[0, 0, 800, 600]` implies (e.g. a scaled-down
-  VM/CI display); use a screen at least 800×600 or lower the values.
+- **`region ... exceeds the screenshot`** — either the display's real
+  resolution is smaller than the active config's `region` implies (e.g. a
+  scaled-down VM/CI display; use a screen at least as large as `region`,
+  or lower its values), or you used `argus.yaml` (1x, `[0, 0, 800, 600]`)
+  on a 2x/Retina display where the raw screenshot is `1600x1200`+ — run
+  "Measure your display" above and switch to `argus.retina.yaml` if so.
+- **Taps land in the wrong place / pixel_matches never finds the swatch
+  colour, but the window and screenshots otherwise look right** — this is
+  the classic symptom of using the 1x config (`argus.yaml`) on a 2x/Retina
+  display (or vice versa): every coordinate is off by the display's pixel
+  ratio. Run "Measure your display" above and use the matching config.
 - **OCR-based tests (`text_present`) fail even though the window looks
   right** — check `tesseract --version` runs; without the `ocr` extra and
   the `tesseract` binary installed, `text_present`/`text_not_present`

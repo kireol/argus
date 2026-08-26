@@ -1,0 +1,33 @@
+# Argus Demo desktop example -- 2x / Retina (HiDPI) display variant.
+#
+# The desktop adapter's `region` and device.tap/pixel_matches coordinates
+# are SCREENSHOT PIXELS (the raw display capture), not tkinter's logical
+# points -- see the COORDINATE UNITS comment in argus.yaml. On a 2x display
+# those are double the app's own 800x600 logical geometry, so this file
+# only overrides `region` and `variables:` from argus.yaml (via `extends:`,
+# doubling every value); backend, device command, and test paths are
+# inherited unchanged. See README.md "Measure your display" for how to
+# tell whether you need this file or the base argus.yaml -- the values
+# here have NOT been verified against a real Retina display (no such
+# machine was available while building this example); double-check them
+# with the "Measure your display" procedure before trusting a run.
+#
+#     export ARGUS_PYTHON=$(pwd)/.venv/bin/python
+#     argus run --config examples/desktop/argus.retina.yaml
+extends: argus.yaml
+
+devices:
+  desktop_app:
+    region: [0, 0, 1600, 1200]
+
+variables:
+  tap_plus_x: 800
+  tap_plus_y: 600
+  tap_settings_x: 800
+  tap_settings_y: 800
+  tap_dark_toggle_x: 800
+  tap_dark_toggle_y: 500
+  tap_back_x: 800
+  tap_back_y: 800
+  swatch_pixel_x: 1360
+  swatch_pixel_y: 200
