@@ -70,6 +70,7 @@ argus run --platform android      # run one platform
 argus run --tag smoke --continue-on-failure
 argus run --max-failures 5
 argus run --skip-to 68            # resume at console test number N
+argus ci run --suite pr           # CI/CD mode: suites, retries, gates, argus-results/
 argus run --no-logs               # progress only (hide timestamped INFO lines)
 argus run --save-comparisons      # keep actual/expected/diff for HTML report
 argus version                     # print framework version
@@ -111,6 +112,7 @@ See `argus --help` / `argus run --help` for the full option list.
 | Plugin development | [docs/plugin-development.md](docs/plugin-development.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | MCP server (AI clients) | [docs/mcp.md](docs/mcp.md) |
+| CI/CD integration (`argus ci run`, GitHub Action) | [docs/ci-cd.md](docs/ci-cd.md) |
 
 ## AI clients (MCP)
 

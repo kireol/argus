@@ -1,0 +1,62 @@
+# Argus CI example configuration.
+#
+# Extends the repository demo config (fake devices + fake backend, so it runs
+# anywhere — no hardware) and adds the `ci:` section. Try it from the repo root:
+#
+#     argus ci run --config examples/ci/argus-ci.yml --suite pr --dry-run
+#     argus ci run --config examples/ci/argus-ci.yml --suite pr
+#
+# Everything under `ci:` is optional; sensible defaults apply when omitted.
+extends: ../../config/fake.yaml
+
+ci:
+  # auto | github | gitlab | jenkins | azure | generic | local
+  provider: auto
+
+  # A suite is a selection policy over your existing tests (AND of selectors).
+  suites:
+    pr:
+      description: Fast feedback on every pull request
+      tags: [smoke]
+    merge:
+      description: Everything the PR suite runs, plus visual checks
+      extends: pr
+      tags: [visual]          # tags accumulate: smoke AND visual
+    nightly:
+      description: Full regression
+      features: [Movies]
+
+  # Retry only transient failures; assertion failures and visual regressions
+  # are never retried. max_attempts is the total number of attempts.
+  retry:
+    enabled: true
+    max_attempts: 2
+    on: [timeout, device_error, connection_error, screenshot_capture_error]
+
+  execution:
+    workers: 1              # each worker owns distinct devices
+    strategy: balanced      # sequential | balanced (only matters with workers > 1)
+    fail_fast: false        # keep going to collect full diagnostics
+
+  artifacts:
+    enabled: true
+    directory: argus-results
+    retain_on_success: true
+
+  # Quality gates evaluated after execution. Actions: fail | warn | ignore.
+  policy:
+    required: [pr]          # every selected `pr` test must pass
+    failures: { action: fail }
+    visual_regression: { action: fail }
+    known_failure: { action: warn }
+    flaky: { action: warn }
+
+  # Expected failures stay visible in every report as KNOWN_FAILURE.
+  known_failures: []
+  #  - test: MOV-002
+  #    reason: "OCR flakiness tracked in ARGUS-123"
+
+  reporting:
+    summary: true           # GitHub job summary (when on GitHub Actions)
+    annotations: true       # ::error annotations for failed tests
+    max_annotations: 20

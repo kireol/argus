@@ -1,0 +1,41 @@
+# Example GitHub Actions workflow for a project that uses Argus.
+# Copy to .github/workflows/argus.yml in your repository and adjust the
+# config path / suite names to match your argus.yml (see argus-ci.yml here).
+name: Argus
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"   # nightly
+
+permissions:
+  contents: read
+
+jobs:
+  argus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pull requests run the fast suite; pushes to main run the merge suite;
+      # the nightly schedule runs everything.
+      - name: Pick suite
+        id: suite
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) echo "name=pr" >> "$GITHUB_OUTPUT" ;;
+            schedule)     echo "name=nightly" >> "$GITHUB_OUTPUT" ;;
+            *)            echo "name=merge" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: kireol/argus@v1
+        with:
+          suite: ${{ steps.suite.outputs.name }}
+          config: argus.yml
+          workers: 2
+          retry: 2
+          upload-artifacts: true
+
+      # junit.xml is standard JUnit XML — feed it to any test reporter action.

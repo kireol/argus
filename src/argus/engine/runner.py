@@ -14,6 +14,7 @@ import contextlib
 import os
 import shlex
 import subprocess
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ from argus.events.events import (
 from argus.exceptions import ConfigurationError, TestDefinitionError, UTFError
 from argus.logging import get_logger
 from argus.models.results import (
+    AttemptRecord,
     RunResult,
     RunStatus,
     StepResult,
@@ -78,6 +80,21 @@ class FailurePolicy:
         return False, None
 
 
+@dataclass(frozen=True)
+class RetryOverride:
+    """Run-level retry policy layered over each test's own ``retry`` block.
+
+    ``max_attempts`` is the *total* number of attempts (1 = no retry). The
+    effective policy for a test is the more generous of the two: the larger
+    attempt count and the union of retryable categories. Categories use the
+    engine's failure-category names (``timeout``, ``device_connection``,
+    ``backend``, ``screenshot``).
+    """
+
+    max_attempts: int = 1
+    categories: frozenset[str] = frozenset()
+
+
 @dataclass
 class RunOptions:
     filters: TestFilter = field(default_factory=TestFilter)
@@ -85,6 +102,15 @@ class RunOptions:
     skip_preflight: bool = False
     #: 1-based ordinal in the filtered suite to start at (``--skip-to``).
     skip_to: int | None = None
+    #: Skip the configuration ``setup`` commands (a caller already ran them).
+    skip_setup: bool = False
+    #: Run-level retry policy (CI); ``None`` keeps per-test ``retry`` only.
+    retry: RetryOverride | None = None
+    #: Cooperative cancellation: when set, no further test is started and the
+    #: run finishes with ``RunStatus.CANCELLED`` (remaining tests are skipped).
+    cancel: threading.Event | None = None
+    #: Pin the artifact run directory instead of a timestamped ``results.dir`` entry.
+    results_dir: Path | None = None
 
 
 class TestRunner:
@@ -159,7 +185,9 @@ class TestRunner:
 
         with RunSession(self.config, self.events) as session:
             artifacts = ArtifactManager(
-                self.config.results, Path(self.config.root_dir or ".")
+                self.config.results,
+                Path(self.config.root_dir or "."),
+                run_dir=options.results_dir,
             )
 
             # -- pre-flight -----------------------------------------------------------
@@ -174,8 +202,8 @@ class TestRunner:
                     self.events.publish(TestRunCompleted(result=run_result))
                     return run_result
 
-            if self.config.setup:
-                ok, setup_error = self._run_setup()
+            if self.config.setup and not options.skip_setup:
+                ok, setup_error = self.run_setup()
                 if not ok:
                     run_result.status = RunStatus.SETUP_FAILED
                     run_result.stop_reason = setup_error
@@ -186,6 +214,7 @@ class TestRunner:
             # -- execution --------------------------------------------------------------
             failures = 0
             stopped = False
+            cancelled = False
             plan = [
                 (test, platform)
                 for test in tests
@@ -194,8 +223,14 @@ class TestRunner:
             lifecycle = _FeatureLifecycle(self, session, artifacts, suite, plan)
             try:
                 for test in tests:
+                    if not stopped and self._cancel_requested(options):
+                        cancelled = True
+                        stopped = True
+                        run_result.stopped_early = True
+                        run_result.stop_reason = "cancelled"
                     if stopped:
-                        run_result.tests.append(self._skipped(test, "run stopped early"))
+                        skip_reason = "cancelled" if cancelled else "run stopped early"
+                        run_result.tests.append(self._skipped(test, skip_reason))
                         self.events.publish(TestSkipped(result=run_result.tests[-1]))
                         continue
 
@@ -203,7 +238,7 @@ class TestRunner:
                         setup_error = lifecycle.before(test, platform)
                         if setup_error is None:
                             result = self._run_test_with_retries(
-                                session, artifacts, test, platform
+                                session, artifacts, test, platform, options
                             )
                         else:
                             result = self._feature_setup_failed(test, platform, setup_error)
@@ -224,7 +259,9 @@ class TestRunner:
                 run_result.results_dir = str(artifacts.run_dir)
 
         run_result.duration = time.monotonic() - started
-        if run_result.stopped_early:
+        if cancelled:
+            run_result.status = RunStatus.CANCELLED
+        elif run_result.stopped_early:
             run_result.status = RunStatus.STOPPED
         elif run_result.failed_count:
             run_result.status = RunStatus.FAILED
@@ -233,7 +270,11 @@ class TestRunner:
 
     # -- helpers -------------------------------------------------------------------------
 
-    def _run_setup(self) -> tuple[bool, str | None]:
+    @staticmethod
+    def _cancel_requested(options: RunOptions) -> bool:
+        return options.cancel is not None and options.cancel.is_set()
+
+    def run_setup(self) -> tuple[bool, str | None]:
         """Run config ``setup`` commands once after preflight. Returns (ok, error)."""
         self.log.info("Running %d setup command(s)", len(self.config.setup))
         variables = dict(self.config.variables)
@@ -405,16 +446,39 @@ class TestRunner:
         artifacts: ArtifactManager,
         test: TestDefinition,
         platform: str | None,
+        options: RunOptions | None = None,
     ) -> TestResult:
         attempts = test.retry.count + 1
+        retry_on: set[str] = set(test.retry.only)
+        override = options.retry if options is not None else None
+        if override is not None:
+            attempts = max(attempts, override.max_attempts)
+            retry_on |= set(override.categories)
+        history: list[AttemptRecord] = []
         result: TestResult
         for attempt in range(1, attempts + 1):
-            result = self._run_test(session, artifacts, test, platform)
+            result = self._run_test(session, artifacts, test, platform, attempt=attempt)
             result.attempts = attempt
+            history.append(
+                AttemptRecord(
+                    attempt=attempt,
+                    status=result.status,
+                    duration=result.duration,
+                    failure_category=result.failure_category,
+                    error=result.error,
+                    artifact_dir=result.artifact_dir,
+                )
+            )
+            if attempt > 1:
+                # Keep every attempt's evidence; the final result summarizes them.
+                result.attempt_history = list(history)
+                result.initial_failure = history[0].failure_category
+                result.flaky = result.passed
             if result.passed:
                 return result
             category = result.failure_category
-            if attempt < attempts and category in test.retry.only:
+            cancelled = options is not None and self._cancel_requested(options)
+            if attempt < attempts and category in retry_on and not cancelled:
                 self.log.warning(
                     "Retrying %s (attempt %d/%d) after %s failure",
                     test.id,
@@ -432,14 +496,18 @@ class TestRunner:
         artifacts: ArtifactManager,
         test: TestDefinition,
         platform: str | None,
+        *,
+        attempt: int = 1,
     ) -> TestResult:
         self.events.publish(
             TestStarted(test_id=test.id, name=test.name, feature=test.feature, platform=platform)
         )
         started = time.monotonic()
-        test_artifacts = artifacts.for_test(
-            test.id if platform is None else f"{test.id}_{platform}"
-        )
+        artifact_name = test.id if platform is None else f"{test.id}_{platform}"
+        if attempt > 1:
+            # Retries never overwrite the previous attempt's evidence.
+            artifact_name = f"{artifact_name}_attempt{attempt}"
+        test_artifacts = artifacts.for_test(artifact_name)
 
         device = None
         device_name = self._device_name_for(session, test, platform)
