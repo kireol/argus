@@ -1,170 +1,81 @@
-# Argus — Universal Test Framework (`argus`)
+# Argus
 
-A cross-platform functional and **visual** testing framework for applications
-that have no UI automation hooks. Argus drives your backend into a known
-state, observes the application from the outside (screenshots, image
-recognition, OCR), reads its internal state through an optional
-instrumentation protocol, and verifies that what's *actually on screen*
-matches expectations.
+**Cross-platform functional & visual testing — an engine that runs declarative
+YAML tests against real applications, and a desktop app that helps you write
+them.**
 
-Tests are plain, human-readable YAML:
+This repository holds two projects:
 
-```yaml
-id: MOV-001
-name: Movie artwork appears
-feature: Movies
-tags: [smoke, movies, visual]
-platforms: [android, yocto]
-steps:
-  - action: backend.set
-    data:
-      movieId: 123
-  - action: wait_until
-    condition:
-      type: image_present
-      image: movie_123.png
-      threshold: 0.90
-    timeout: 10s
-```
+| Directory | Command | What it does |
+|-----------|---------|--------------|
+| [`argus/`](argus/README.md) | `argus` | The test engine and CLI. Drives your backend into a known state, observes the app from the outside (screenshots, image recognition, OCR) and verifies what is actually on screen. Targets: backend REST APIs, Android, iOS, web browsers, desktop apps, Roku, Apple TV, ESP32, Yocto / embedded Linux. Includes an MCP server and first-class CI/CD support. |
+| [`argus-test-creator/`](argus-test-creator/README.md) | `argus-test-creator` | The visual authoring companion. Record interactions (browser, desktop, Android, fake demo target), add assertions from what you see, edit steps with undo/redo, validate, and export YAML that runs with Argus alone. |
 
-Supported today: **backend REST APIs**, **Android** (ADB), **iOS**
-(WebDriverAgent), **web browsers** (Playwright), **desktop apps** (Windows /
-Linux / macOS via pyautogui), **Roku** (developer mode), **Apple TV** (tvOS
-Simulator and pyatv), **ESP32** (serial agent / Wokwi), and **Yocto /
-embedded Linux** (SSH with pluggable screenshot providers).
-The engine is platform-agnostic — new device adapters plug in without
-touching the core.
+Argus is the engine; the Creator is the authoring experience; YAML is the
+portable contract between them. The Creator never imports Argus — it drives
+the installed `argus` CLI.
 
-## Quick Start
+## Installation
+
+One installer sets up both projects in a shared virtual environment
+(`.venv/` at the repository root) and installs the `argus` and
+`argus-test-creator` commands:
 
 ```text
 Windows:
-    .\install.ps1
+    .\install.ps1          # add -Dev for development tooling
 
 macOS/Linux:
-    ./install.sh
-
-Then:
-    argus validate
-    argus run --tag smoke
+    ./install.sh           # add --dev for development tooling
 ```
 
-No hardware yet? Run the example suite against the built-in fake devices:
+Requires Python 3.12+ (or [uv](https://docs.astral.sh/uv/), which provisions
+one). No administrator rights are needed and no user configuration is
+touched. Details: [argus/docs/installation.md](argus/docs/installation.md).
+
+## Quick start
 
 ```bash
-argus run --config config/fake.yaml
+cd argus
+argus validate                          # check your environment
+argus run --config config/fake.yaml     # demo run against the fake devices
+argus-test-creator demo                 # open the Creator on the built-in demo target
 ```
 
-Complete sample apps for every platform live under `examples/`.
+Run `argus` from `argus/` (or pass `--config`): the default `test_paths`
+and `results/` directory are relative to the working directory.
 
-## Everyday commands
+## Layout
 
-```bash
-argus init                        # create your user configuration
-argus validate                    # full environment diagnosis
-argus validate --framework-only   # installation check (no devices needed)
-argus --dry-run                   # validate everything a run would use, execute nothing
-argus list --feature movies       # browse tests
-argus run --feature movies        # run a feature
-argus run --platform android      # run one platform
-argus run --tag smoke --continue-on-failure
-argus run --max-failures 5
-argus run --skip-to 68            # resume at console test number N
-argus ci run --suite pr           # CI/CD mode: suites, retries, gates, argus-results/
-argus run --no-logs               # progress only (hide timestamped INFO lines)
-argus run --save-comparisons      # keep actual/expected/diff for HTML report
-argus version                     # print framework version
-argus update                      # reinstall deps after git pull, then validate
+```text
+.
+├── install.sh / install.ps1   installers (both projects)
+├── action.yml                 GitHub Action — `uses: kireol/argus@v1`
+├── pyproject.toml             uv workspace root (not a package)
+├── CHANGELOG.md · LICENSE · CONTRIBUTING.md
+├── argus/                     package `argus`  — src/, tests/, docs/, examples/, config/
+└── argus-test-creator/        package `argus-test-creator` — src/, tests/, docs/, examples/
 ```
-
-Every run writes artifacts and reports under `results/<timestamp>/`:
-console output, `report.json`, `junit.xml`, and `report.html` (tests grouped
-by feature, with failure details and embedded `actual` / `expected` / `diff`
-screenshots). The console prints the HTML report path when the run finishes.
-Use `--save-comparisons` (or `results.save_comparison_images: true`) to keep
-comparison images for passing image verifies too. Each failure also keeps
-device logs and instrumentation state beside those images.
-
-See `argus --help` / `argus run --help` for the full option list.
 
 ## Documentation
 
-| Topic | Where |
-| --- | --- |
-| Installation (all platforms) | [docs/installation.md](docs/installation.md) |
-| Getting started | [docs/getting-started.md](docs/getting-started.md) |
-| Examples (one per platform) | [examples/README.md](examples/README.md) |
-| Writing tests | [docs/test-authoring.md](docs/test-authoring.md) |
-| Configuration reference | [docs/configuration.md](docs/configuration.md) |
-| Architecture | [docs/architecture.md](docs/architecture.md) |
-| Device adapters | [docs/adapters.md](docs/adapters.md) |
-| Android setup | [docs/android.md](docs/android.md) |
-| Yocto / embedded setup | [docs/yocto.md](docs/yocto.md) |
-| Web browser setup | [docs/browser.md](docs/browser.md) |
-| Roku setup | [docs/roku.md](docs/roku.md) |
-| Apple TV setup | [docs/tvos.md](docs/tvos.md) |
-| iOS setup | [docs/ios.md](docs/ios.md) |
-| Desktop setup | [docs/desktop.md](docs/desktop.md) |
-| ESP32 setup | [docs/esp32.md](docs/esp32.md) |
-| Image verification | [docs/image-verification.md](docs/image-verification.md) |
-| App instrumentation protocol | [docs/instrumentation.md](docs/instrumentation.md) |
-| CLI reference | [docs/cli.md](docs/cli.md) |
-| Plugin development | [docs/plugin-development.md](docs/plugin-development.md) |
-| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
-| MCP server (AI clients) | [docs/mcp.md](docs/mcp.md) |
-| CI/CD integration (`argus ci run`, GitHub Action) | [docs/ci-cd.md](docs/ci-cd.md) |
+- Engine: [argus/README.md](argus/README.md) and [argus/docs/](argus/docs/)
+  (getting started, configuration, test authoring, each device adapter,
+  CI/CD, MCP, plugin development, troubleshooting).
+- Creator: [argus-test-creator/README.md](argus-test-creator/README.md) and
+  [argus-test-creator/docs/](argus-test-creator/docs/) (recording, assertions,
+  Android recording, packaging).
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
-## AI clients (MCP)
+## CI
 
-Argus is also a [Model Context Protocol](https://modelcontextprotocol.io)
-server, so Claude Code, IDE assistants and CI agents can discover, run and
-debug tests through the same service layer the CLI uses:
-
-```bash
-pip install -e ".[mcp]"
-argus mcp --config config/fake.yaml            # stdio, for Claude Code / IDEs
-claude mcp add argus -- argus mcp --config config/fake.yaml
+```yaml
+- uses: kireol/argus@v1
+  with:
+    suite: pr
 ```
 
-Tools such as `argus_list_tests`, `argus_preflight`, `argus_run_test`,
-`argus_capture_screenshot` and `argus_diagnose_run` return structured,
-bounded results; a Streamable HTTP transport with bearer-token auth serves
-shared labs and CI. See [docs/mcp.md](docs/mcp.md).
-
-## Design in one diagram
-
-```text
-Test YAML ──> Test Engine ──> Backend / Device / Instrumentation adapters
-                                  │
-                                  ▼
-                             Observation ──> Verifiers ──> Result
-                                                             │
-                                          Console / JSON / JUnit / HTML
-```
-
-The engine knows nothing about ADB, SSH, or HTTP specifics; those live behind
-adapter interfaces. Instrumentation is diagnostic only — a test passes only
-when the *externally observed* screen matches, never on the application's
-say-so. The CLI and the MCP server are thin clients of the service layer
-(`ArgusService` over `TestRunner`), so a future GUI can drive the same engine
-and subscribe to the same event stream.
-
-## Developing
-
-```bash
-./install.sh --dev
-.venv/bin/python -m pytest      # framework self-tests (no hardware needed)
-.venv/bin/ruff check src tests
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Updating
-
-```bash
-git pull
-argus update    # reinstalls dependencies, preserves your configuration, revalidates
-```
+See [argus/docs/ci-cd.md](argus/docs/ci-cd.md).
 
 ## License
 

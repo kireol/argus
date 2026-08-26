@@ -1,0 +1,8 @@
+[   50.000000] /dev/input/event0: EV_KEY       KEY_BACK             DOWN
+[   50.000000] /dev/input/event0: EV_SYN       SYN_REPORT           00000000
+[   50.080000] /dev/input/event0: EV_KEY       KEY_BACK             UP
+[   50.080000] /dev/input/event0: EV_SYN       SYN_REPORT           00000000
+[   51.000000] /dev/input/event0: EV_KEY       KEY_VOLUMEUP         DOWN
+[   51.000000] /dev/input/event0: EV_SYN       SYN_REPORT           00000000
+[   51.050000] /dev/input/event0: EV_KEY       KEY_VOLUMEUP         UP
+[   51.050000] /dev/input/event0: EV_SYN       SYN_REPORT           00000000
