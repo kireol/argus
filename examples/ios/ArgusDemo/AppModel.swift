@@ -32,9 +32,13 @@ final class AppModel: ObservableObject {
 
     private let logger = Logger(subsystem: "com.argus.demo", category: "app")
 
-    /// Called once when the UI appears.
+    /// Called once when the UI appears — the app is now initialized and
+    /// interactive, which is exactly what instrumentation's `ready` must mean.
     func start() {
         publishState()
+        #if DEBUG
+        InstrumentationState.shared.markReady()
+        #endif
         log("App ready")
     }
 
@@ -69,12 +73,17 @@ final class AppModel: ObservableObject {
     /// One line per action, on both stdout (Xcode console) and the unified log
     /// (`xcrun simctl spawn booted log stream --predicate 'process == "ArgusDemo"'`).
     ///
-    /// `privacy: .public` matters: without it the unified log redacts every
-    /// interpolated value to `<private>` and `log_contains "Counter: 3"` never
-    /// matches.
+    /// Two details make these lines visible to `log_contains`:
+    ///
+    /// * `notice`, not `info`. `log stream` runs at `--level default`, which
+    ///   drops `OS_LOG_TYPE_INFO`; the `log_command` in `argus.yaml` passes no
+    ///   `--level`, so an `info` line would simply never arrive.
+    /// * `privacy: .public`. Without it the unified log redacts every
+    ///   interpolated value to `<private>` and `log_contains "Counter: 3"`
+    ///   never matches.
     private func log(_ line: String) {
         print(line)
-        logger.info("\(line, privacy: .public)")
+        logger.notice("\(line, privacy: .public)")
     }
 
     private func publishState() {
