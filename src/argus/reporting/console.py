@@ -251,7 +251,11 @@ class ConsoleReporter:
                 self.console.print(result.stop_reason)
             return
         self.console.print()
-        if result.stopped_early:
+        if result.status == RunStatus.CANCELLED:
+            self.console.print(
+                f"[bold yellow]TEST RUN CANCELLED[/bold yellow] ({result.stop_reason})"
+            )
+        elif result.stopped_early:
             self.console.print(
                 f"[bold yellow]TEST RUN STOPPED[/bold yellow] ({result.stop_reason})"
             )

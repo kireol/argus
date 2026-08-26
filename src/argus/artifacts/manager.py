@@ -17,6 +17,7 @@ Layout::
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,23 @@ from PIL.Image import Image
 
 from argus.config.models import ResultsConfig
 from argus.logging import redact
+
+_UNSAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def safe_path_component(value: str, *, fallback: str = "unnamed", max_length: int = 120) -> str:
+    """Reduce an arbitrary string (test id, platform, branch...) to a safe file name.
+
+    The result never contains path separators, ``..`` segments, or control
+    characters, so it can be joined under an output directory without escaping it.
+    """
+    cleaned = _UNSAFE_COMPONENT_RE.sub("_", value.strip())
+    cleaned = cleaned.strip("._")
+    while ".." in cleaned:
+        cleaned = cleaned.replace("..", "_")
+    if not cleaned:
+        cleaned = fallback
+    return cleaned[:max_length]
 
 
 class TestArtifacts:
@@ -116,12 +134,17 @@ class TestArtifacts:
 class ArtifactManager:
     """Creates per-run and per-test artifact directories."""
 
-    def __init__(self, config: ResultsConfig, root_dir: Path) -> None:
+    def __init__(
+        self, config: ResultsConfig, root_dir: Path, *, run_dir: Path | None = None
+    ) -> None:
         self._config = config
         base = Path(config.dir)
         if not base.is_absolute():
             base = root_dir / base
         self._base = base
+        # A caller (e.g. the CI layer) may pin the run directory instead of
+        # letting the manager mint a timestamped one under ``results.dir``.
+        self._fixed_run_dir = run_dir
         self._run_dir: Path | None = None
 
     @property
@@ -130,6 +153,9 @@ class ArtifactManager:
 
     @property
     def run_dir(self) -> Path:
+        if self._run_dir is None and self._fixed_run_dir is not None:
+            self._fixed_run_dir.mkdir(parents=True, exist_ok=True)
+            self._run_dir = self._fixed_run_dir
         if self._run_dir is None:
             stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             run_dir = self._base / stamp
@@ -143,7 +169,7 @@ class ArtifactManager:
 
     def for_test(self, test_id: str) -> TestArtifacts:
         return TestArtifacts(
-            self.run_dir / test_id,
+            self.run_dir / safe_path_component(test_id),
             save_enabled=True,
         )
 
