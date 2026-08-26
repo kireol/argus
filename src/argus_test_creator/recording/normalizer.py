@@ -72,6 +72,10 @@ class EventNormalizer:
                         continue
                     actions.append(self._gesture(pending_down, moves, event))
                     pending_down, moves = None, []
+                case RecordingEventType.GESTURE:
+                    action = self._semantic_gesture(event)
+                    if action is not None:
+                        actions.append(action)
                 case RecordingEventType.CLICK:
                     actions.append(self._simple(NormalizedActionKind.TAP, event))
                 case RecordingEventType.DOUBLE_CLICK:
@@ -124,6 +128,23 @@ class EventNormalizer:
             else NormalizedActionKind.DRAG
         )
         return NormalizedAction(kind=kind, position_end=end, **common)
+
+    #: ``metadata["gesture"]`` values a recorder may emit with ``GESTURE`` events.
+    _GESTURE_KINDS = {
+        "tap": NormalizedActionKind.TAP,
+        "double_tap": NormalizedActionKind.DOUBLE_TAP,
+        "long_press": NormalizedActionKind.LONG_PRESS,
+        "swipe": NormalizedActionKind.SWIPE,
+        "drag": NormalizedActionKind.DRAG,
+        "multi_touch": NormalizedActionKind.MULTI_TOUCH,
+    }
+
+    def _semantic_gesture(self, event: RecordingEvent) -> NormalizedAction | None:
+        """A recorder already recognized the gesture: trust it, keep provenance."""
+        kind = self._GESTURE_KINDS.get(str(event.metadata.get("gesture", "")))
+        if kind is None:
+            return None  # unknown gesture kinds stay in the raw journal only
+        return self._simple(kind, event)
 
     @staticmethod
     def _simple(kind: NormalizedActionKind, event: RecordingEvent) -> NormalizedAction:

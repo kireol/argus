@@ -66,6 +66,22 @@ def _convert(
                 name = "device.swipe"
                 warnings.append("Drag converted to swipe: the target does not support drag.")
             return [StepDraft(action=name, params=params, provenance=prov)]
+        case NormalizedActionKind.MULTI_TOUCH:
+            fingers = action.metadata.get("fingers") or []
+            if caps is not None and not caps.supports_multi_touch:
+                warnings.append("Multi-touch gesture skipped: the target does not support "
+                                "device.multi_touch.")
+                return [StepDraft(action="log", provenance=prov, name="Multi-touch (unsupported)",
+                                  params={"message": f"Recorded {len(fingers)}-finger gesture"})]
+            params = {"fingers": [
+                {"from_x": path[0]["x"], "from_y": path[0]["y"],
+                 "to_x": path[-1]["x"], "to_y": path[-1]["y"]}
+                for path in fingers if path
+            ]}
+            if action.duration_ms:
+                params["duration"] = format_duration(action.duration_ms / 1000)
+            return [StepDraft(action="device.multi_touch", params=params, provenance=prov,
+                              name=f"Multi-touch ({len(fingers)} fingers)")]
         case NormalizedActionKind.KEY:
             return [StepDraft(action="device.key", params={"key": action.key}, provenance=prov)]
         case NormalizedActionKind.TYPE_TEXT:
