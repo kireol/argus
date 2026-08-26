@@ -140,3 +140,5 @@ exists to catch.
 - [test-authoring.md](test-authoring.md) — the full YAML reference
 - [image-verification.md](image-verification.md) — thresholds, regions, tips
 - [cli.md](cli.md) — every command and flag
+- [../examples/](../examples/README.md) — a complete sample app and Argus
+  suite for every supported platform
