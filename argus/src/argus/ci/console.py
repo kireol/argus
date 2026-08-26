@@ -16,6 +16,8 @@ from argus.events.events import (
     Event,
     FeatureSetupCompleted,
     FeatureTeardownCompleted,
+    SuiteSetupCompleted,
+    SuiteTeardownCompleted,
     TestFailed,
     TestPassed,
     TestSkipped,
@@ -88,5 +90,15 @@ class CIConsoleReporter:
             phase = "setup" if isinstance(event, FeatureSetupCompleted) else "teardown"
             self.console.print(
                 f"{self._prefix(worker)}[red]✗[/red] feature {escape(event.feature)} {phase}: "
+                f"{escape(event.error or 'failed')}"
+            )
+            return
+        if (
+            isinstance(event, (SuiteSetupCompleted, SuiteTeardownCompleted))
+            and not event.passed
+        ):
+            phase = "setup" if isinstance(event, SuiteSetupCompleted) else "teardown"
+            self.console.print(
+                f"{self._prefix(worker)}[red]✗[/red] suite {phase}: "
                 f"{escape(event.error or 'failed')}"
             )

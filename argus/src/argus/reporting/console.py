@@ -16,6 +16,10 @@ from argus.events.events import (
     PreflightCheckCompleted,
     PreflightCompleted,
     PreflightStarted,
+    SuiteSetupCompleted,
+    SuiteSetupStarted,
+    SuiteTeardownCompleted,
+    SuiteTeardownStarted,
     TestFailed,
     TestPassed,
     TestRunCompleted,
@@ -145,6 +149,18 @@ class ConsoleReporter:
         self.console.print(f"  [{colour}]{mark}[/{colour}] {phase}{target}")
         if error:
             self.console.print(f"    {error}")
+
+    def _on_SuiteSetupStarted(self, event: SuiteSetupStarted) -> None:  # noqa: N802
+        self._feature_header("Suite")
+
+    def _on_SuiteSetupCompleted(self, event: SuiteSetupCompleted) -> None:  # noqa: N802
+        self._feature_phase_line("suite setup", event.device, event.passed, event.error)
+
+    def _on_SuiteTeardownStarted(self, event: SuiteTeardownStarted) -> None:  # noqa: N802
+        self._feature_header("Suite")
+
+    def _on_SuiteTeardownCompleted(self, event: SuiteTeardownCompleted) -> None:  # noqa: N802
+        self._feature_phase_line("suite teardown", event.device, event.passed, event.error)
 
     def _on_FeatureSetupStarted(self, event: FeatureSetupStarted) -> None:  # noqa: N802
         self._feature_header(event.feature)

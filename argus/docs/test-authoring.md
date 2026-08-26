@@ -223,6 +223,38 @@ Do not assume execution order. Reset what you rely on in `setup:`
 (`device.reset`, a `backend.set` to a known state) and clean up in
 `teardown:` — teardown runs even when the test fails.
 
+## Suite-level setup and teardown
+
+Steps the **whole run** relies on (seeding the backend, logging in once, resetting a
+service) run once per run in a top-level `suite:` block, next to `tests:` /
+`features:`:
+
+```yaml
+suite:
+  setup:                        # once, before the first selected test
+    - action: backend.set
+      data: { catalog: loaded }
+  teardown:                     # once, at the very end — always
+    - action: backend.reset
+  device: cluster               # optional: bind a configured device for device.* steps
+```
+
+Rules:
+
+- **Once per run.** Setup runs after preflight and the config `setup:` host
+  commands, before any feature setup or test; teardown runs after every
+  feature teardown, even when the run stopped early, was cancelled, or a test
+  failed. Only one `suite:` block may exist across the whole suite.
+- **Filters apply first.** When no test is selected, nothing runs.
+- **No device unless asked.** Steps see `${variables}` from the config and the
+  backend; a `device.*` step needs `device:` naming a configured device.
+- **Setup failure fails every selected test.** They are recorded as failed
+  with `Suite setup failed: <step> — <message>` (category `suite_setup`) and
+  are not executed; teardown still runs.
+- **Teardown failures are logged** and never change a test's result.
+- The console prints a **Suite** section with ✓/✗ lines; the event bus emits
+  `SuiteSetupStarted/Completed` and `SuiteTeardownStarted/Completed`.
+
 ## Feature-level setup and teardown
 
 Steps that every test of a feature relies on (loading a catalog, logging in,
