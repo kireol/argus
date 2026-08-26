@@ -138,7 +138,7 @@ For stdio, `Client(StdioServerParameters(command="argus", args=["mcp", "--config
 
 Any client that launches stdio servers works with `command: argus`,
 `args: ["mcp", "--config", "<file>"]`. Use the absolute path to the `argus`
-executable inside the virtualenv (`.venv/bin/argus`) when the client does not
+executable inside the virtualenv (`<repo>/.venv/bin/argus`) when the client does not
 inherit your shell `PATH`. For HTTP clients point them at the endpoint URL and
 add the bearer header.
 

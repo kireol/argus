@@ -5,7 +5,8 @@ This walkthrough goes from a fresh clone to your first passing visual test.
 ## 1. Install and verify
 
 ```bash
-./install.sh            # Windows: .\install.ps1
+./install.sh            # at the repository root; Windows: .\install.ps1
+cd argus                # the engine project — run argus from here
 argus validate --framework-only
 ```
 

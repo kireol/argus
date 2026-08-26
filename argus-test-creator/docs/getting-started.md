@@ -3,8 +3,10 @@
 ## 1. Install
 
 ```bash
-uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev,ocr,browser]"
-.venv/bin/playwright install chromium
+./install.sh                                   # repository root; installs argus + argus-test-creator into .venv/
+cd argus-test-creator
+uv pip install --python ../.venv/bin/python -e ".[ocr,browser]"   # optional recorder extras
+../.venv/bin/playwright install chromium
 argus-test-creator doctor            # confirms Argus, Playwright, Tesseract, ADB, permissions
 ```
 

@@ -16,10 +16,13 @@ knowledge required.
 ## Windows
 
 ```powershell
-git clone <repository>
-cd universal-test-framework
+git clone https://github.com/kireol/argus
+cd argus
 .\install.ps1
 ```
+
+The installer lives at the repository root and installs both the engine
+(`argus/`) and the Argus Test Creator (`argus-test-creator/`).
 
 Open a **new terminal** afterwards (the installer adds a user-level launcher
 to your PATH), then:
@@ -32,8 +35,8 @@ argus validate --framework-only
 ## macOS / Linux
 
 ```bash
-git clone <repository>
-cd universal-test-framework
+git clone https://github.com/kireol/argus
+cd argus
 ./install.sh
 ```
 
@@ -51,20 +54,26 @@ export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
 ## What the installer does
 
 1. Detects your OS, architecture, and a compatible Python (or uv).
-2. Creates a local virtual environment in `.venv/` inside the repository.
-3. Installs the framework and its dependencies from `pyproject.toml`
-   (including the `yocto` and `ocr` extras).
-4. Installs a user-level `argus` launcher — no admin rights, no system PATH
-   changes on macOS/Linux; user PATH only on Windows.
-5. Creates the `results/` directory.
+2. Creates one virtual environment in `.venv/` at the repository root,
+   shared by both projects.
+3. Installs the engine (`argus/`, with the `yocto` and `ocr` extras) and the
+   Test Creator (`argus-test-creator/`, with the `ui` extra) from their
+   `pyproject.toml` files.
+4. Installs user-level `argus` and `argus-test-creator` launchers — no admin
+   rights, no system PATH changes on macOS/Linux; user PATH only on Windows.
+5. Creates the `argus/results/` directory.
 6. Runs a health check (`argus version`, `argus --help`,
-   `argus validate --framework-only`).
+   `argus validate --framework-only`, `argus-test-creator --help`).
 
 Running the installer again is safe: it upgrades the existing installation
 and never touches your configuration.
 
-`./install.sh --dev` / `.\install.ps1 -Dev` add the development tooling
-(pytest, ruff, mypy).
+`./install.sh --dev` / `.\install.ps1 -Dev` add the development tooling of
+both projects (pytest, ruff, mypy, pytest-qt).
+
+Run `argus` from the `argus/` directory (or pass `--config`): the default
+`test_paths: ["test_suites"]` and the `results/` directory are relative to
+the working directory.
 
 ## Optional dependency groups
 
@@ -127,9 +136,10 @@ validation, and never modifies your user configuration.
 Nothing is installed system-wide. To remove the framework:
 
 1. Delete the repository clone (this removes `.venv/` too).
-   **Careful:** `results/` lives inside the repository — move it first if
-   you want to keep test results.
-2. Delete the launcher: `~/.local/bin/argus` (macOS/Linux) or
+   **Careful:** `argus/results/` lives inside the repository — move it first
+   if you want to keep test results.
+2. Delete the launchers: `~/.local/bin/argus` and
+   `~/.local/bin/argus-test-creator` (macOS/Linux) or
    `%LOCALAPPDATA%\argus\bin` (Windows).
 3. Optionally delete your user configuration directory (printed by
    `argus init`) — keep it if you may reinstall later.

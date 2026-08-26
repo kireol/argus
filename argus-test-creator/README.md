@@ -31,13 +31,19 @@ evolve — including future AI-assisted authoring — without touching the engin
 Requires Python 3.12+ and an Argus installation (`argus --version` must work, or set
 `ARGUS_EXECUTABLE`).
 
+The Creator lives in the [kireol/argus](https://github.com/kireol/argus)
+monorepo next to the engine; the root installer sets up both in one shared
+`.venv/` at the repository root:
+
 ```bash
-# developer mode
-git clone https://github.com/kireol/argus-test-creator
-cd argus-test-creator
-uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev,ocr,browser]"
-.venv/bin/playwright install chromium       # for browser recording
-brew install tesseract                      # macOS; apt install tesseract-ocr on Debian/Ubuntu
+git clone https://github.com/kireol/argus
+cd argus
+./install.sh                                    # Windows: .\install.ps1 — installs argus + argus-test-creator
+../.venv/bin/playwright install chromium        # optional, for browser recording (run from argus-test-creator/)
+brew install tesseract                          # macOS; apt install tesseract-ocr on Debian/Ubuntu
+
+# extra recorder dependencies (from argus-test-creator/):
+uv pip install --python ../.venv/bin/python -e ".[ocr,browser,desktop]"
 
 # end users (packaged builds): see docs/packaging.md
 ```
@@ -133,9 +139,9 @@ argus-test-creator demo DIR [--run]   scripted demo recording (fake target)
 ## Development
 
 ```bash
-.venv/bin/python -m pytest          # unit, integration (fake target + real Argus), UI, performance
-.venv/bin/ruff check src tests
-.venv/bin/mypy src
+../install.sh --dev                    # once, from the repository root: ./install.sh --dev
+scripts/dev.sh                         # ruff + mypy + pytest (unit, integration, UI, performance)
+../.venv/bin/python -m pytest tests/unit
 ```
 
 Tests that need Argus, Playwright/Chromium or Tesseract skip themselves when those are missing.
