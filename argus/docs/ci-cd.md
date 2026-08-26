@@ -381,10 +381,12 @@ checkout (`install: true`, with optional `extras: browser,ocr`), invokes
 `argus ci run` with the inputs mapped to flags, uploads `argus-results/`
 with `actions/upload-artifact@v4` (`upload-artifacts`, `artifact-name`),
 propagates the exit code, and exposes `status`, `exit-code`, `report-json`,
-`junit-xml`, `report-html` outputs. Inputs: `suite`, `config`, `provider`
-(default `github`), `workers`, `retry`, `tags`, `platforms`, `output-dir`,
-`extra-args`, `python-version`, `install`, `extras`. Put everything else in
-`argus.yml` — action inputs only override what they name.
+`junit-xml`, `report-html`, `output-dir` outputs (all absolute paths). Inputs:
+`suite`, `config`, `provider` (default `github`), `workers`, `retry`, `tags`,
+`platforms`, `output-dir`, `working-directory` (run from a subdirectory — in a
+monorepo, relative paths in `argus.yml` resolve against it), `extra-args`,
+`python-version`, `install`, `extras`. Put everything else in `argus.yml` —
+action inputs only override what they name.
 
 The `action.yml` at the repository root can be published as a standalone
 `kireol/argus-action` repository without changes; pin whichever you use with a

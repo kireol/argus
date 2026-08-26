@@ -55,6 +55,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
   running them; teardown always runs. See `docs/test-authoring.md`.
 
 ### Fixed
+- GitHub Action: new `working-directory` input (relative `argus.yml` paths
+  resolve against it — needed when Argus lives in a subdirectory, as in this
+  monorepo) and a new absolute `output-dir` output; `report-json`,
+  `junit-xml`, `report-html` are now absolute paths. The repository workflow
+  runs the action from `argus/`, installs the Qt platform libraries the
+  Creator's pytest-qt needs, checks the job summary through Argus's run log
+  (`$GITHUB_STEP_SUMMARY` is per-step), and the `ci run --help` test strips
+  the ANSI styling Typer emits under `GITHUB_ACTIONS`.
 - Android: every adb command now targets the resolved serial (`adb -s`), so
   commands issued before `connect()` can no longer hit "more than one
   device/emulator"; `is_application_running` treats `pidof`'s non-zero exit
