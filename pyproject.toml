@@ -1,0 +1,8 @@
+# Workspace root — not a package. The two installable projects live in
+# argus/ and argus-test-creator/; see README.md for the layout.
+[tool.uv.workspace]
+members = ["argus", "argus-test-creator"]
+
+[tool.uv.sources]
+argus = { workspace = true }
+argus-test-creator = { workspace = true }
