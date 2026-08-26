@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="DemoScene" extends="Scene">
+    <script type="text/brightscript" uri="pkg:/components/DemoScene.brs" />
+
+    <children>
+        <!-- Full-screen background; recoloured by applyTheme(). -->
+        <Rectangle id="background" translation="[0,0]" width="1920" height="1080" color="#ffffff" />
+
+        <!-- Theme swatch: green in light theme, purple in dark theme. Stays
+             visible on both Home and Settings so tests can check it right
+             after toggling the theme. -->
+        <Rectangle id="swatch" translation="[1500,100]" width="200" height="100" color="#2ecc71" />
+
+        <!-- Home screen -->
+        <Label id="title" text="Argus Demo" translation="[100,80]" font="font:LargeBoldSystemFont" color="#000000" />
+        <Label id="counter" text="Count: 0" translation="[100,220]" font="font:LargeSystemFont" color="#000000" />
+
+        <!-- Settings screen (hidden until DPAD_RIGHT navigates here) -->
+        <Label id="settingsTitle" text="Settings" translation="[100,80]" font="font:LargeBoldSystemFont" color="#000000" visible="false" />
+        <Label id="toggleLabel" text="Dark theme" translation="[100,220]" font="font:LargeSystemFont" color="#000000" visible="false" />
+        <Label id="backLabel" text="Back" translation="[100,320]" font="font:MediumSystemFont" color="#000000" visible="false" />
+    </children>
+</component>
