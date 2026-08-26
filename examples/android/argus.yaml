@@ -1,0 +1,19 @@
+# Argus Android example. Run from the repository root:
+#
+#     ANDROID_SERIAL=<serial> argus run --config examples/android/argus.yaml
+#
+# See examples/android/README.md for build/run/test instructions.
+
+devices:
+  phone:
+    type: android
+    serial: ${ANDROID_SERIAL}
+    app_package: com.argus.demo
+    app_activity: .MainActivity
+    instrumentation:
+      base_url: http://127.0.0.1:8085
+
+test_paths: [examples/android/tests]
+
+results:
+  retain_on_success: false

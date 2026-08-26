@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Gradle wrapper: generate locally with `gradle wrapper` (see README);
+# the jar/binary is not committed.
+gradle/wrapper/gradle-wrapper.jar

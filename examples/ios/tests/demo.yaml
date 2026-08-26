@@ -1,0 +1,318 @@
+# Argus Demo — iOS test suite.
+#
+# Run from the repository root, with the debug build installed on a booted
+# simulator and WebDriverAgent running:
+#
+#     argus run --config examples/ios/argus.yaml
+#
+# Every coordinate is a *screenshot pixel* and comes from `variables:` in
+# examples/ios/argus.yaml, so one edit there retargets the whole suite at a
+# simulator with a different screen. README.md has the point -> pixel table.
+
+features:
+  Demo:
+    setup:
+      - action: device.start
+    teardown:
+      - action: device.stop
+
+tests:
+
+  - id: IOS-001
+    name: Home screen shows the app title
+    description: >
+      The app launches and its title is readable on screen. The smallest
+      end-to-end proof that the build, the install and WebDriverAgent are all
+      working.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [ios]
+    # &clean_start is reused by every test below: each one relaunches the app
+    # so the suite does not depend on execution order. device.reset on iOS is
+    # terminate + launch (WebDriverAgent cannot wipe app data), which is enough
+    # here because the demo keeps all of its state in memory.
+    setup: &clean_start
+      - action: device.reset
+      - action: wait_until
+        name: App relaunched in its default light theme
+        condition:
+          type: pixel_matches
+          x: ${swatch_x}
+          y: ${swatch_y}
+          color: ${light_swatch}
+          tolerance: 12
+        timeout: 30s
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Argus Demo"
+
+  - id: IOS-002
+    name: Instrumentation reports a ready app on the home screen
+    description: >
+      The app's own /test/status endpoint agrees with what is on screen.
+      Instrumentation is diagnostic, never authoritative: it localizes a
+      failure rather than replacing the visual checks.
+    feature: Demo
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      # `ready` starts false and is set by AppModel.start(), so this really can
+      # fail. The server itself is listening from App.init(), which is why
+      # polling it here cannot raise a connection error.
+      - action: wait_until
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+        timeout: 10s
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: application
+          equals: ArgusDemo
+      - action: verify
+        condition:
+          type: instrumentation_value
+          key: screen
+          equals: home
+
+  - id: IOS-003
+    name: Tapping + increments the counter
+    description: >
+      One tap on the + button moves the counter from 0 to 1, both on screen
+      and in the app's reported state.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+      - action: verify
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+
+  - id: IOS-004
+    name: Counter increments three times
+    description: >
+      Three taps produce Count: 3 on screen and the matching line in the
+      simulator's unified log.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 3"
+        timeout: 10s
+      # The iOS adapter clears its log buffer on connect, not per test, so a
+      # retry of this test could match the previous attempt's line. No test
+      # here opts into retries, and IOS-004 is the only test that emits
+      # "Counter: 3", so in this suite the buffer cannot lie.
+      - action: wait_until
+        name: The app logged the third increment
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+        timeout: 10s
+
+  - id: IOS-005
+    name: Settings screen opens
+    description: >
+      Tapping Settings replaces the home screen. "Settings" alone would not
+      prove it — the home screen's own button says "Settings" too — so the
+      test also requires the Dark theme control to be visible and the counter
+      to be gone.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: device.tap
+        x: ${settings_x}
+        y: ${settings_y}
+      - action: wait_until
+        condition:
+          all:
+            - type: text_present
+              text: "Settings"
+            - type: text_present
+              text: "Dark theme"
+            - type: application_state
+              key: screen
+              equals: settings
+        timeout: 10s
+      - action: verify
+        condition:
+          type: text_not_present
+          text: "Count:"
+
+  - id: IOS-006
+    name: Back returns home and keeps the counter
+    description: >
+      Navigation does not reset state. iOS has no hardware back key that
+      WebDriverAgent can press (docs/ios.md: device.key BACK would type the
+      letters "BACK"), so the test taps the app's own Back control.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 1"
+        timeout: 10s
+      - action: device.tap
+        x: ${settings_x}
+        y: ${settings_y}
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+        timeout: 10s
+      - action: device.tap
+        x: ${back_x}
+        y: ${back_y}
+      - action: wait_until
+        condition:
+          all:
+            - type: text_present
+              text: "Count: 1"
+            - type: application_state
+              key: screen
+              equals: home
+        timeout: 10s
+
+  - id: IOS-007
+    name: Dark theme changes the swatch colour
+    description: >
+      The colour swatch is green in light theme and purple in dark theme, so a
+      single pixel proves the theme without OCR. The swatch is drawn on both
+      screens, which is why the check works from the settings screen.
+    feature: Demo
+    tags: [visual]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: verify
+        name: Light theme starts green
+        condition:
+          type: pixel_matches
+          x: ${swatch_x}
+          y: ${swatch_y}
+          color: ${light_swatch}
+          tolerance: 12
+      - action: device.tap
+        x: ${settings_x}
+        y: ${settings_y}
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+        timeout: 10s
+      - action: device.tap
+        name: Flip the Dark theme switch
+        x: ${theme_toggle_x}
+        y: ${theme_toggle_y}
+      - action: wait_until
+        name: Dark theme turns the swatch purple
+        condition:
+          all:
+            - type: pixel_matches
+              x: ${swatch_x}
+              y: ${swatch_y}
+              color: ${dark_swatch}
+              tolerance: 12
+            - type: application_state
+              key: theme
+              equals: dark
+        timeout: 10s
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Theme: dark"
+    teardown:
+      # A relaunch is the cheapest way back to the light theme, and it runs
+      # even if the test failed half way through.
+      - action: device.reset
+
+  - id: IOS-008
+    name: Reset returns the app to a clean state
+    description: >
+      device.reset relaunches the app; the counter is back to zero.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: device.tap
+        x: ${plus_x}
+        y: ${plus_y}
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Count: 2"
+        timeout: 10s
+      - action: device.reset
+      - action: wait_until
+        condition:
+          all:
+            - type: text_present
+              text: "Count: 0"
+            - type: application_state
+              key: counter
+              equals: 0
+        timeout: 30s
+
+  - id: IOS-009
+    name: Home screen screenshot is captured as an artifact
+    description: >
+      Demonstrates the screenshot action. The PNG lands in the run's artifact
+      directory under results/ and is attached to the HTML report.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [ios]
+    setup: *clean_start
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 10s
+      - action: screenshot
+        file: home.png

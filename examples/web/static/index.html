@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Argus Demo</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="view-home" class="view">
+    <h1 class="title">Argus Demo</h1>
+    <div id="counter" class="counter">Count: 0</div>
+    <button id="inc" class="btn">+</button>
+    <button id="settings" class="btn">Settings</button>
+    <div id="swatch" class="swatch"></div>
+  </div>
+
+  <div id="view-settings" class="view" hidden>
+    <h1 class="title">Settings</h1>
+    <label id="dark-row" class="toggle-row" for="dark">
+      <input type="checkbox" id="dark">
+      <span>Dark theme</span>
+    </label>
+    <button id="back" class="btn">Back</button>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

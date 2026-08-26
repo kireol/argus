@@ -1,0 +1,23 @@
+# Argus Demo web example. Start both servers first:
+#     python examples/backend/server.py
+#     python examples/web/server.py
+# then, from the repository root:
+#     argus run --config examples/web/argus.yaml
+backend:
+  base_url: http://127.0.0.1:8765
+
+devices:
+  web:
+    type: browser
+    platform: web
+    url: http://127.0.0.1:3000/
+    browser: chromium
+    headless: true
+    viewport: [1280, 720]
+    instrumentation:
+      base_url: http://127.0.0.1:3000
+
+test_paths: [examples/web/tests]
+
+results:
+  retain_on_success: false
