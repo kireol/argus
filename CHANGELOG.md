@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.4] - 2026-08-26
+
+### Added
+- **Suite-level `setup` / `teardown`.** A top-level `suite:` block in a test
+  file runs Argus steps once per run — before the first selected test and
+  after the last one (teardown always runs, even after failures, an early stop
+  or Ctrl+C). Optional `device:` binds a configured device for `device.*`
+  steps. A failed suite setup fails every selected test
+  (`Suite setup failed: …`, category `suite_setup`) without executing them.
+  New events `SuiteSetupStarted/Completed`, `SuiteTeardownStarted/Completed`;
+  the console shows a **Suite** section. See `argus/docs/test-authoring.md`.
+
 ## [1.2.3] - 2026-08-26
 
 ### Added
