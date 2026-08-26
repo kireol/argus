@@ -1,0 +1,45 @@
+# Argus Demo Yocto example. Flash/boot a target running the argus-demo
+# systemd service (see meta-argus-demo/), then, from the repository root:
+#
+#     YOCTO_HOST=192.168.1.50 YOCTO_USER=root YOCTO_KEY=~/.ssh/id_ed25519 \
+#         argus run --config examples/yocto/argus.yaml
+
+devices:
+  board:
+    type: yocto
+    host: ${YOCTO_HOST}
+    username: ${YOCTO_USER}
+    private_key: ${YOCTO_KEY}
+    screen_size: [1280, 720]
+
+    # No compositor is assumed (see README "Screenshots without a display
+    # stack"). The app already runs an instrumentation HTTP server for
+    # status/state on :8085, and also serves the current frame as a PNG at
+    # GET /test/screen -- so a screenshot is just a loopback curl on the
+    # device, regardless of whether the target uses fbdev/KMS/Weston/nothing.
+    screenshot:
+      command: "curl -s -o {path} http://127.0.0.1:8085/test/screen"
+      remote_path: /tmp/argus_demo_screen.png
+      timeout: 15
+
+    app:
+      start: "systemctl start argus-demo"
+      stop: "systemctl stop argus-demo"
+      process: "argus-demo"
+
+    log_command: "journalctl -u argus-demo -n 200 --no-pager"
+
+    instrumentation:
+      base_url: "http://${YOCTO_HOST}:8085"
+
+# Referenced from test steps as ${YOCTO_HOST} -- the Yocto adapter has no
+# tap()/press_key() of its own, so tests drive input over the network with
+# shell.run + curl against the app's instrumentation server rather than
+# device.key/device.tap. See README "Why shell.run + curl for input".
+variables:
+  YOCTO_HOST: ${YOCTO_HOST}
+
+test_paths: [examples/yocto/tests]
+
+results:
+  retain_on_success: false
