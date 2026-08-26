@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "argus-test-creator"
+version = "0.1.0"
+description = "Argus Test Creator — visual authoring of Argus YAML tests (recorder, wizard, editor)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "Chris Parent" }]
+keywords = ["testing", "argus", "recorder", "test-authoring", "visual-testing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "Pillow>=10.3",
+    "numpy>=1.26",
+    "platformdirs>=4.2",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6>=6.7"]
+ocr = ["pytesseract>=0.3.10"]
+browser = ["playwright>=1.45"]
+desktop = ["pynput>=1.7", "mss>=9.0"]
+argus = ["argus"]
+dev = [
+    "pytest>=8.2",
+    "pytest-qt>=4.4",
+    "pytest-timeout>=2.3",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-PyYAML",
+    "PySide6>=6.7",
+]
+all = ["argus-test-creator[ui,ocr,browser,desktop]"]
+
+[project.scripts]
+argus-test-creator = "argus_test_creator.cli.main:app"
+
+[project.entry-points."argus_test_creator.recorders"]
+fake = "argus_test_creator.adapters.fake:register"
+browser = "argus_test_creator.adapters.browser:register"
+desktop = "argus_test_creator.adapters.desktop:register"
+android = "argus_test_creator.adapters.android:register"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/argus_test_creator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+timeout = 120
+markers = [
+    "integration: integration tests (may be slower)",
+    "performance: performance tests",
+    "ui: tests that need an (offscreen) Qt platform",
+]
+filterwarnings = ["ignore::pytest.PytestCollectionWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["SIM108", "SIM117", "SIM105", "UP046"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_unused_ignores = true
+check_untyped_defs = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = [
+    "pytesseract", "cv2", "playwright", "playwright.*", "pynput", "pynput.*", "mss", "mss.*",
+    "PySide6", "PySide6.*", "pytestqt", "pytestqt.*",
+]
+ignore_missing_imports = true

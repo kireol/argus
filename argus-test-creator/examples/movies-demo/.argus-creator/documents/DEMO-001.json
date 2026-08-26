@@ -1,0 +1,403 @@
+{
+  "annotations": {},
+  "assets": [
+    {
+      "created_at": "2026-08-26T09:49:13.821751Z",
+      "height": 72,
+      "id": "asset_1a03d7948dd85a8ee",
+      "relative_path": "batman_row_c7bc61f4.png",
+      "sha256": "c7bc61f4ae57e12d4bbfdd1e60f44dd1310e9269ab4f81f805575e9a52fa3c15",
+      "source_capture_id": "cap_1a03d7948d4970d63",
+      "source_region": {
+        "height": 72,
+        "width": 700,
+        "x": 120,
+        "y": 160
+      },
+      "width": 700
+    }
+  ],
+  "created_at": "2026-08-26T09:49:12.067703Z",
+  "id": "doc_1a03d7942031ccc34",
+  "metadata": {
+    "description": "",
+    "feature": "Movies",
+    "id": "DEMO-001",
+    "name": "Search finds Batman Begins",
+    "parameters": {},
+    "platforms": [
+      "fake"
+    ],
+    "priority": null,
+    "requires": {},
+    "retry_count": 0,
+    "retry_only": [],
+    "tags": [],
+    "timeout": null
+  },
+  "schema_version": 1,
+  "session_ids": [
+    "session_1a03d794203b6818a"
+  ],
+  "setup": [],
+  "source_path": "/Users/cparent/projects/argus-test-creator/examples/movies-demo/tests/DEMO-001.yaml",
+  "steps": [
+    {
+      "action": "device.tap",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9b2910a",
+      "name": null,
+      "notes": "",
+      "params": {
+        "x": 200,
+        "y": 250
+      },
+      "provenance": {
+        "action_id": "act_1a03d7942186719b0",
+        "capture_id": "cap_1a03d7942b23459a3",
+        "event_ids": [
+          "evt_1a03d7942186719b0"
+        ],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.tap",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9d83791",
+      "name": null,
+      "notes": "",
+      "params": {
+        "x": 200,
+        "y": 180
+      },
+      "provenance": {
+        "action_id": "act_1a03d7942180b00e8",
+        "capture_id": "cap_1a03d794358663974",
+        "event_ids": [
+          "evt_1a03d7942180b00e8"
+        ],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.tap",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9a5131b",
+      "name": null,
+      "notes": "",
+      "params": {
+        "x": 300,
+        "y": 190
+      },
+      "provenance": {
+        "action_id": "act_1a03d7942182bd085",
+        "capture_id": "cap_1a03d7944070c1c62",
+        "event_ids": [
+          "evt_1a03d7942182bd085"
+        ],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c92a5a2b",
+      "name": "Type 'Batman'",
+      "notes": "",
+      "params": {
+        "key": "B"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 1 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c930f52c",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "a"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 2 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9d68cc2",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "t"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 3 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c92fa440",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "m"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 4 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c960b2ca",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "a"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 5 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9b671db",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "n"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218cb4bbe",
+        "capture_id": "cap_1a03d794810b82cb1",
+        "event_ids": [
+          "evt_1a03d794218cb4bbe",
+          "evt_1a03d79421895a78f",
+          "evt_1a03d79421812f264",
+          "evt_1a03d794218a71549",
+          "evt_1a03d794218f6a748",
+          "evt_1a03d794218deba27"
+        ],
+        "note": "character 6 of 'Batman'",
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "device.key",
+      "condition": null,
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948c9bfdcac",
+      "name": null,
+      "notes": "",
+      "params": {
+        "key": "ENTER"
+      },
+      "provenance": {
+        "action_id": "act_1a03d794218b986eb",
+        "capture_id": "cap_1a03d7948bb4a346b",
+        "event_ids": [
+          "evt_1a03d794218b986eb"
+        ],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "recording"
+      }
+    },
+    {
+      "action": "wait_until",
+      "condition": {
+        "all": null,
+        "any": null,
+        "not_": null,
+        "params": {
+          "image": "batman_row_c7bc61f4.png",
+          "threshold": 0.9
+        },
+        "type": "image_present"
+      },
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948dd1160b2",
+      "name": null,
+      "notes": "",
+      "params": {
+        "timeout": "10s"
+      },
+      "provenance": {
+        "action_id": null,
+        "capture_id": "cap_1a03d7948d4970d63",
+        "event_ids": [],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "manual"
+      }
+    },
+    {
+      "action": "verify",
+      "condition": {
+        "all": null,
+        "any": null,
+        "not_": null,
+        "params": {
+          "text": "Batman Begins"
+        },
+        "type": "text_present"
+      },
+      "custom": false,
+      "enabled": true,
+      "id": "step_1a03d7948ddca6139",
+      "name": null,
+      "notes": "",
+      "params": {},
+      "provenance": {
+        "action_id": null,
+        "capture_id": "cap_1a03d7948d4970d63",
+        "event_ids": [],
+        "note": null,
+        "session_id": "session_1a03d794203b6818a",
+        "source": "manual"
+      }
+    }
+  ],
+  "target": {
+    "adapter": "fake",
+    "argus_device_name": "demo",
+    "argus_device_options": {
+      "screen_size": [
+        1280,
+        720
+      ],
+      "screenshot_dir": "assets/frames"
+    },
+    "argus_device_type": "fake",
+    "capabilities": {
+      "limitations": [],
+      "supports_app_lifecycle": true,
+      "supports_backend": true,
+      "supports_drag": true,
+      "supports_element_metadata": false,
+      "supports_input_recording": true,
+      "supports_instrumentation": true,
+      "supports_keyboard": true,
+      "supports_live_screen": true,
+      "supports_logs": true,
+      "supports_long_press": true,
+      "supports_mouse": false,
+      "supports_multi_touch": true,
+      "supports_ocr": true,
+      "supports_pinch": true,
+      "supports_playback_state": true,
+      "supports_screenshot": true,
+      "supports_swipe": true,
+      "supports_tap": true,
+      "supports_touch": true
+    },
+    "description": "Built-in demo application. No hardware needed.",
+    "id": "fake-movies",
+    "name": "Movies Demo (fake target)",
+    "platform": "fake",
+    "settings": {
+      "scenario": "movies",
+      "screen_size": [
+        1280,
+        720
+      ]
+    }
+  },
+  "teardown": [],
+  "unknown_fields": {},
+  "updated_at": "2026-08-26T09:49:13.821829Z",
+  "warnings": []
+}
