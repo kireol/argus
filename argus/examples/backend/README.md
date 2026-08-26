@@ -11,7 +11,7 @@ All commands below are run **from the repository root**.
 
 ## Prerequisites
 
-- The repo's `.venv` set up per the top-level `README.md`
+- The repo's `.venv` (at the repository root) set up per the top-level `README.md`
   (`./install.sh` / `.\install.ps1`, or `uv sync`).
 - Nothing else — `examples/backend/server.py` only uses the Python standard
   library (`http.server`), so there is nothing to install or build.
@@ -48,8 +48,8 @@ curl http://127.0.0.1:8765/health
 With the server still running, in another terminal:
 
 ```bash
-.venv/bin/argus --dry-run --config examples/backend/argus.yaml   # validates config + tests, touches nothing
-.venv/bin/argus run --config examples/backend/argus.yaml
+../.venv/bin/argus --dry-run --config examples/backend/argus.yaml   # validates config + tests, touches nothing
+../.venv/bin/argus run --config examples/backend/argus.yaml
 ```
 
 Expected: `Executed: 8`, `Passed: 8`, `Failed: 0`.
@@ -96,8 +96,8 @@ declare a `platforms:` list. This is deliberate and confirmed working: per
 once with no device bound." The backend adapter is created independently of
 any device (`RunSession.backend` in `src/argus/engine/session.py`), so a
 backend-only test suite genuinely needs no `devices:` entries at all — no
-`fake` placeholder device required. Both `.venv/bin/argus --dry-run --config
-examples/backend/argus.yaml` and `.venv/bin/argus run --config
+`fake` placeholder device required. Both `../.venv/bin/argus --dry-run --config
+examples/backend/argus.yaml` and `../.venv/bin/argus run --config
 examples/backend/argus.yaml` were run against this config to confirm.
 
 ## Troubleshooting

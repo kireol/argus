@@ -39,15 +39,20 @@ touching the core.
 
 ```text
 Windows:
-    .\install.ps1
+    ..\install.ps1      (the installer sits at the repository root)
 
 macOS/Linux:
-    ./install.sh
+    ../install.sh
 
-Then:
+Then, from this directory (argus/):
     argus validate
     argus run --tag smoke
 ```
+
+The installer sets up both this engine and the
+[Argus Test Creator](../argus-test-creator/README.md) in one shared `.venv/`
+at the repository root. Run `argus` from `argus/` (or pass `--config`): the
+default `test_paths` and `results/` are relative to the working directory.
 
 No hardware yet? Run the example suite against the built-in fake devices:
 
@@ -152,12 +157,12 @@ and subscribe to the same event stream.
 ## Developing
 
 ```bash
-./install.sh --dev
-.venv/bin/python -m pytest      # framework self-tests (no hardware needed)
-.venv/bin/ruff check src tests
+../install.sh --dev                # from the repository root: ./install.sh --dev
+../.venv/bin/python -m pytest      # framework self-tests (no hardware needed)
+../.venv/bin/ruff check src tests
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Updating
 
