@@ -110,6 +110,8 @@ def test_top_level_help_lists_commands_and_run_options():
     ):
         assert flag in out or flag[:14] in out
     assert "HTML report" in out
+    assert "Typical commands:" in out
+    assert "argus run --config config/2360x1300.yaml --no-logs --all --save-comparisons" in out
 
 
 def test_run_help_includes_run_options_panel():

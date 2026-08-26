@@ -14,6 +14,22 @@ under **Run options** (`--test`, `--feature`, `--tag`, `--platform`, `--all`,
 `--skip-preflight`, `--skip-to`, `--save-comparisons`). Those flags work as
 `argus run --feature movies` or `argus --feature movies run`.
 
+## Typical commands
+
+`argus --help` ends with this list.
+
+```bash
+argus run --config config/2360x1300.yaml --no-logs --all --save-comparisons
+    # every test against a config; hide INFO log lines; keep actual/expected/diff images
+argus run --tag smoke --continue-on-failure   # smoke tests, keep going after failures
+argus run -t MOV-001 -v                       # one test with DEBUG logging
+argus run --config config/fake.yaml           # example suite on the fake devices
+argus validate                                # installation, backend, every device
+argus list --feature Movies                   # tests for one feature
+argus ci run --suite pr                       # CI/CD-native run of a named suite
+argus stress --scenario examples/stress/checkout-chaos.yaml   # monkey / chaos run
+```
+
 ## argus mcp
 
 Serve Argus to AI clients over the Model Context Protocol (optional
