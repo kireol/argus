@@ -1,0 +1,33 @@
+# Argus configuration for the tvOS example (Apple TV Simulator).
+#
+# Run from the repository root:
+#
+#     argus run --config examples/tvos/argus.yaml
+#
+# Build the app first (see README.md). Override the .app location with
+# ARGUS_TVOS_APP if you build somewhere other than examples/tvos/build.
+#
+# There is no backend in this example: the tvOS app is self-contained, so its
+# state comes from key presses only.
+
+devices:
+
+  sim:
+    type: tvos_sim
+    platform: tvos_sim
+    bundle_id: com.argus.demo.tv
+    # "booted" uses whichever tvOS simulator is already running; set a UDID
+    # from `xcrun simctl list devices` to pin a specific one.
+    udid: booted
+    app_path: ${ARGUS_TVOS_APP:-examples/tvos/build/Build/Products/Debug-appletvsimulator/ArgusDemoTV.app}
+    boot: true
+    # Predicate for `log stream`; must match the executable name.
+    process_name: ArgusDemoTV
+    instrumentation:
+      base_url: http://127.0.0.1:8085
+
+test_paths:
+  - examples/tvos/tests
+
+results:
+  retain_on_success: false
