@@ -55,6 +55,8 @@ No hardware yet? Run the example suite against the built-in fake devices:
 argus run --config config/fake.yaml
 ```
 
+Complete sample apps for every platform live under `examples/`.
+
 ## Everyday commands
 
 ```bash
@@ -90,6 +92,7 @@ See `argus --help` / `argus run --help` for the full option list.
 | --- | --- |
 | Installation (all platforms) | [docs/installation.md](docs/installation.md) |
 | Getting started | [docs/getting-started.md](docs/getting-started.md) |
+| Examples (one per platform) | [examples/README.md](examples/README.md) |
 | Writing tests | [docs/test-authoring.md](docs/test-authoring.md) |
 | Configuration reference | [docs/configuration.md](docs/configuration.md) |
 | Architecture | [docs/architecture.md](docs/architecture.md) |

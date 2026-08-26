@@ -1,0 +1,363 @@
+# Argus Demo Yocto example tests (YOC-001..YOC-009).
+#
+# The Yocto adapter (src/argus/adapters/yocto.py) implements no tap()/
+# press_key() -- YoctoAdapter.capabilities never sets supports_tap or
+# supports_keyboard, so device.tap/device.key would raise
+# DeviceCapabilityError. Input is instead driven with shell.run + curl
+# against the app's own instrumentation server: a POST to
+# http://${YOCTO_HOST}:8085/test/input with {"key": "..."} enqueues a
+# synthetic pygame key event the app's main loop applies on its next frame.
+# This works on any target regardless of display stack (fbdev/KMS/Weston/
+# none), which a compositor-specific tool like xdotool would not. See
+# README.md "Why shell.run + curl for input" for the full reasoning
+# (including the xdotool alternative for targets that do run a compositor).
+#
+# Every `device.reset`/`device.restart` below is followed by a short fixed
+# `wait` rather than `wait_until` -- see README.md "Why a fixed wait after
+# reset" for why this is the one place the project's wait_until-only
+# convention is relaxed.
+
+features:
+  Demo:
+    setup:
+      - action: device.restart
+      - action: wait
+        duration: 2s
+    teardown:
+      - action: device.stop
+
+tests:
+
+  - id: YOC-001
+    name: App starts and title is visible
+    description: >
+      After startup the Home screen shows the "Argus Demo" title. Requires
+      OCR (screenshot captured via the loopback /test/screen instrumentation
+      endpoint -- no compositor needed).
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: wait_until
+        condition:
+          type: text_present
+          text: "Argus Demo"
+        timeout: 15s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Argus Demo"
+
+  - id: YOC-002
+    name: Instrumentation reports ready on Home
+    description: >
+      GET /test/status reports ready: true and screen: "home" once the app
+      has finished starting.
+    feature: Demo
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: wait_until
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+        timeout: 10s
+      - action: verify
+        condition:
+          all:
+            - type: instrumentation_value
+              key: ready
+              equals: true
+            - type: instrumentation_value
+              key: screen
+              equals: home
+
+  - id: YOC-003
+    name: RETURN increments the counter
+    description: >
+      Sending a synthetic RETURN key (shell.run + curl against
+      /test/input) increments the Home counter once.
+    feature: Demo
+    tags: [smoke, visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: shell.run
+        name: Send RETURN
+        command: curl
+        args:
+          - -sf
+          - -X
+          - POST
+          - "http://${YOCTO_HOST}:8085/test/input"
+          - -H
+          - "Content-Type: application/json"
+          - -d
+          - '{"key":"RETURN"}'
+      - action: wait_until
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+        timeout: 5s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 1"
+
+  - id: YOC-004
+    name: Counter increments three times
+    description: >
+      Sending RETURN three times brings the counter to 3, on screen and in
+      the journal ("Counter: 3").
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: shell.run
+        name: Send RETURN (1)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: shell.run
+        name: Send RETURN (2)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: shell.run
+        name: Send RETURN (3)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: counter
+          equals: 3
+        timeout: 5s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 3"
+      - action: verify
+        condition:
+          type: log_contains
+          text: "Counter: 3"
+
+  - id: YOC-005
+    name: RIGHT opens Settings
+    description: Sending RIGHT from Home navigates to the Settings screen.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: shell.run
+        name: Send RIGHT
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RIGHT"}']
+      - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
+        condition:
+          type: text_present
+          text: "Dark theme"
+        timeout: 5s
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+
+  - id: YOC-006
+    name: Back returns Home and keeps the counter
+    description: >
+      Incrementing once, opening Settings, then going back with
+      ESCAPE returns to Home with the counter unchanged.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: shell.run
+        name: Send RETURN (increment)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+        timeout: 5s
+      - action: shell.run
+        name: Send RIGHT (open Settings)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RIGHT"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+        timeout: 5s
+      - action: shell.run
+        name: Send ESCAPE (back)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"ESCAPE"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: home
+        timeout: 5s
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 1"
+
+  - id: YOC-007
+    name: Dark theme changes the swatch colour
+    description: >
+      Toggling the theme from Settings then returning to Home turns the
+      swatch at (1100, 150) from green to purple.
+    feature: Demo
+    tags: [visual]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: shell.run
+        name: Send RIGHT (open Settings)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RIGHT"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: settings
+        timeout: 5s
+      - action: shell.run
+        name: Send RETURN (toggle dark theme)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: theme
+          equals: dark
+        timeout: 5s
+      - action: shell.run
+        name: Send ESCAPE (back to Home)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"ESCAPE"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: screen
+          equals: home
+        timeout: 5s
+      - action: verify
+        condition:
+          type: pixel_matches
+          x: 1100
+          y: 150
+          color: "#8e44ad"
+    teardown:
+      # Restore the clean, known state for whichever test runs next.
+      - action: device.reset
+      - action: wait
+        duration: 2s
+
+  - id: YOC-008
+    name: Reset returns the app to a clean state
+    description: >
+      After incrementing the counter, device.reset (systemctl restart) brings
+      it back to Count: 0 on the Home screen.
+    feature: Demo
+    tags: [visual, ocr]
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+      - action: shell.run
+        name: Send RETURN (increment)
+        command: curl
+        args: [-sf, -X, POST, "http://${YOCTO_HOST}:8085/test/input",
+               -H, "Content-Type: application/json", -d, '{"key":"RETURN"}']
+      - action: wait_until
+        condition:
+          type: application_state
+          key: counter
+          equals: 1
+        timeout: 5s
+    steps:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+      - action: wait_until
+        condition:
+          type: application_state
+          key: counter
+          equals: 0
+        timeout: 15s
+      - action: verify
+        condition:
+          type: application_state
+          key: screen
+          equals: home
+      - action: verify
+        condition:
+          type: text_present
+          text: "Count: 0"
+
+  - id: YOC-009
+    name: Screenshot artifact
+    description: >
+      Captures the Home screen via the /test/screen instrumentation endpoint
+      and saves it as a test artifact.
+    feature: Demo
+    tags: []
+    platforms: [yocto]
+    setup:
+      - action: device.reset
+      - action: wait
+        duration: 2s
+    steps:
+      - action: wait_until
+        condition:
+          type: instrumentation_value
+          key: ready
+          equals: true
+        timeout: 10s
+      - action: screenshot
+        file: yoc_home.png
