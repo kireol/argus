@@ -63,11 +63,15 @@ tests:
     platforms: [ios]
     setup: *clean_start
     steps:
-      - action: verify
+      # `ready` starts false and is set by AppModel.start(), so this really can
+      # fail. The server itself is listening from App.init(), which is why
+      # polling it here cannot raise a connection error.
+      - action: wait_until
         condition:
           type: instrumentation_value
           key: ready
           equals: true
+        timeout: 10s
       - action: verify
         condition:
           type: instrumentation_value
@@ -127,6 +131,10 @@ tests:
           type: text_present
           text: "Count: 3"
         timeout: 10s
+      # The iOS adapter clears its log buffer on connect, not per test, so a
+      # retry of this test could match the previous attempt's line. No test
+      # here opts into retries, and IOS-004 is the only test that emits
+      # "Counter: 3", so in this suite the buffer cannot lie.
       - action: wait_until
         name: The app logged the third increment
         condition:
