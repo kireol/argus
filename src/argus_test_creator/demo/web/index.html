@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Argus Movies (Creator demo)</title>
+<style>
+  body { margin: 0; font-family: Helvetica, Arial, sans-serif; background: #101018; color: #ebebf0; }
+  header { background: #202230; padding: 24px 40px; font-size: 32px; color: #fabe28; font-weight: bold; }
+  main { padding: 40px; }
+  .tile, button { background: #fabe28; color: #141414; border: 0; border-radius: 12px;
+    font-size: 28px; padding: 24px 40px; margin: 12px; cursor: pointer; }
+  input { font-size: 28px; padding: 16px; width: 600px; border-radius: 8px; border: 3px solid #9696a5;
+    background: #202230; color: #ebebf0; }
+  .row { display: block; background: #fabe28; color: #141414; border-radius: 12px; padding: 16px 24px;
+    margin: 12px 0; font-size: 28px; width: 640px; cursor: pointer; }
+  h2 { font-size: 40px; margin: 0 0 24px; }
+  .muted { color: #9696a5; }
+  .hidden { display: none; }
+  .artwork { width: 240px; height: 240px; background: #5a288c; margin-top: 24px; }
+</style>
+</head>
+<body>
+<header id="title">Argus Movies</header>
+<main>
+  <section id="home">
+    <button class="tile" data-go="movies">Movies</button>
+    <button class="tile" data-go="settings">Settings</button>
+    <p>Welcome back</p>
+  </section>
+  <section id="movies" class="hidden">
+    <button class="tile" data-go="search">Search</button>
+    <button class="tile" data-go="list">Movie list</button>
+    <button class="tile" data-go="home">Back</button>
+  </section>
+  <section id="search" class="hidden">
+    <input id="query" placeholder="Type a title…" aria-label="Search title">
+    <button id="go">Go</button>
+    <button class="tile" data-go="movies">Back</button>
+  </section>
+  <section id="results" class="hidden">
+    <p id="loading" class="muted hidden">Loading…</p>
+    <div id="rows"></div>
+    <button class="tile" data-go="search">Back</button>
+  </section>
+  <section id="list" class="hidden"><div id="all"></div><button class="tile" data-go="movies">Back</button></section>
+  <section id="details" class="hidden">
+    <h2 id="selected"></h2>
+    <button>Play</button><button>More Info</button>
+    <div class="artwork"></div>
+    <button class="tile" data-go="results">Back</button>
+  </section>
+  <section id="settings" class="hidden"><h2>Settings</h2><p>Theme: Dark</p>
+    <button class="tile" data-go="home">Back</button></section>
+  <section id="error" class="hidden"><h2>Something went wrong</h2><p>Error code 500</p>
+    <button class="tile" data-go="search">Back</button></section>
+</main>
+<script>
+const MOVIES = ["Batman Begins", "The Dark Knight", "Inception", "Interstellar", "Dunkirk"];
+function show(id) {
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("hidden", s.id !== id));
+  fetch("/test/state", {method: "POST", body: JSON.stringify({screen: id})}).catch(() => {});
+}
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => show(b.dataset.go)));
+const all = document.getElementById("all");
+MOVIES.forEach(m => { const d = document.createElement("div"); d.className = "row"; d.textContent = m;
+  d.addEventListener("click", () => select(m)); all.appendChild(d); });
+function select(m) { document.getElementById("selected").textContent = m; show("details"); }
+document.getElementById("go").addEventListener("click", search);
+document.getElementById("query").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+function search() {
+  const q = document.getElementById("query").value.trim().toLowerCase();
+  if (q === "crash") { show("error"); return; }
+  const rows = document.getElementById("rows"); rows.innerHTML = "";
+  const loading = document.getElementById("loading"); loading.classList.remove("hidden");
+  show("results");
+  setTimeout(() => {
+    loading.classList.add("hidden");
+    const matches = MOVIES.filter(m => m.toLowerCase().includes(q));
+    if (!matches.length) { rows.innerHTML = '<p class="muted">No results</p>'; return; }
+    matches.forEach(m => { const d = document.createElement("div"); d.className = "row";
+      d.textContent = m; d.addEventListener("click", () => select(m)); rows.appendChild(d); });
+  }, 700);
+}
+</script>
+</body>
+</html>
