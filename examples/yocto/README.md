@@ -32,33 +32,35 @@ examples/yocto/
   meta-argus-demo/               # <- a minimal BitBake layer
     conf/layer.conf
     recipes-argus/argus-demo/
-      argus-demo_1.0.bb
-      files/                     # checked-in mirror of app/, see below
-        argus_demo.py
-        argus-demo.service
-  Makefile                       # `make sync` copies app/ -> the files/ mirror
+      argus-demo_1.0.bb          # points FILESEXTRAPATHS at ../../../app/, see below
   argus.yaml
   tests/demo.yaml
 ```
 
 ### Editable source vs. recipe files
 
-`app/` is the source you edit and run locally. `recipes-argus/argus-demo/
-files/` is a plain, checked-in copy of the same two files that the recipe's
-`SRC_URI` (`file://argus_demo.py`, `file://argus-demo.service`) fetches from
--- BitBake's local file fetcher only looks inside the recipe's own
-`FILESPATH` (the recipe's directory and its `files/` subdirectory by
-default), it cannot reach up into `../../app/`. Rather than fight that with
-`FILESEXTRAPATHS` tricks, this example just keeps a second copy where
-BitBake expects it.
+`app/` is the single, editable copy of the source -- there is no second copy
+under the recipe to keep in sync. BitBake's local-file fetcher normally only
+looks in the recipe's own `FILESPATH` (the recipe's directory and its
+`files/` subdirectory), but that search path is just configuration:
+`argus-demo_1.0.bb` extends it with
 
-After editing anything under `app/`, refresh the copy:
-
-```bash
-make -C examples/yocto sync
+```
+FILESEXTRAPATHS:prepend := "${THISDIR}/../../../app:"
 ```
 
-(or, without `make`: `cp examples/yocto/app/argus_demo.py examples/yocto/app/argus-demo.service examples/yocto/meta-argus-demo/recipes-argus/argus-demo/files/`).
+`THISDIR` is `meta-argus-demo/recipes-argus/argus-demo/`; three `..` levels
+up is `examples/yocto/`, then into `app/` -- so
+`SRC_URI = "file://argus_demo.py file://argus-demo.service"` resolves
+straight to the files you edit, with nothing to fall out of sync. Edit
+`app/argus_demo.py` or `app/argus-demo.service` and `bitbake argus-demo`
+picks up the change on the next build, no copy step required.
+
+The one thing to watch: this path is relative to the layer's location
+*inside this repository*. If you copy `meta-argus-demo/` out on its own (a
+separate layer checkout, a different manifest, etc.), `app/` has to travel
+with it at the same relative position (`../../../app` from the recipe
+directory), or you adjust `FILESEXTRAPATHS` to point wherever it ends up.
 
 ## Build
 
@@ -113,6 +115,12 @@ YOCTO_HOST=192.168.1.50 YOCTO_USER=root YOCTO_KEY=~/.ssh/id_ed25519 \
 counter, the dark-theme swatch colour, instrumentation, device logs, reset,
 and a screenshot artifact -- see `docs/test-authoring.md` for the actions and
 conditions used.
+
+The feature-level setup uses `device.restart` rather than `device.start`: it
+guarantees a clean process (fresh counter/theme/screen) at the start of the
+suite even if `argus-demo` was already running from a previous run, whereas
+`device.start` on an already-running app would be a no-op that leaves stale
+state in place.
 
 ### Screenshots without a display stack
 
