@@ -285,6 +285,23 @@ class CreatorApp:
         finally:
             self.events.publish(TargetDisconnected(target_id=target_id, reason=reason))
 
+    def reconnect_target(self) -> RecorderAdapter:
+        """After a connection loss: re-attach the same device and resume the session."""
+        recorder = self._require_recorder()
+        reconnect = getattr(recorder, "reconnect", None)
+        if callable(reconnect):
+            reconnect()
+        else:
+            recorder.connect()
+        self.events.publish(TargetConnected(target_id=recorder.target.id))
+        return recorder
+
+    def list_target_devices(self) -> list[Any]:
+        """Devices the current recorder can address (Android serials); empty otherwise."""
+        recorder = self._require_recorder()
+        lister = getattr(recorder, "list_devices", None)
+        return list(lister()) if callable(lister) else []
+
     def _require_recorder(self) -> RecorderAdapter:
         if self.recorder is None:
             raise RecordingError("No target selected.", remediation="Choose a target first.")

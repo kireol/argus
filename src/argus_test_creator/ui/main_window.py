@@ -52,6 +52,8 @@ from argus_test_creator.recording.session import (
     RecordingStarted,
     RecordingStopped,
     ScreenshotCaptured,
+    TargetLost,
+    TargetRestored,
 )
 from argus_test_creator.serialization import document_to_yaml
 from argus_test_creator.ui.bridge import EventBridge, watch
@@ -64,6 +66,11 @@ from argus_test_creator.ui.dialogs.common import (
 )
 from argus_test_creator.ui.dialogs.step_editor import StepEditorDialog
 from argus_test_creator.ui.dialogs.verification import AddVerificationDialog
+from argus_test_creator.ui.widgets.android_panel import (
+    REFRESH_INTERVAL_MS,
+    AndroidDiagnosticsDialog,
+    AndroidPanel,
+)
 from argus_test_creator.ui.widgets.image_view import ImageView
 from argus_test_creator.ui.widgets.metadata_editor import MetadataEditor
 from argus_test_creator.ui.widgets.panels import (
@@ -132,6 +139,17 @@ class MainWindow(QMainWindow):
         self.remote.key_pressed.connect(self._remote_key)
         self.remote.text_entered.connect(self._remote_text)
         live_layout.addWidget(self.remote)
+        self.android_panel = AndroidPanel()
+        self.android_panel.setVisible(False)
+        self.android_panel.device_selected.connect(self._android_device_selected)
+        self.android_panel.refresh_requested.connect(self._android_refresh_devices)
+        self.android_panel.reconnect_requested.connect(self._android_reconnect)
+        self.android_panel.diagnostics_requested.connect(self._android_diagnostics)
+        live_layout.addWidget(self.android_panel)
+        self._android_timer = QTimer(self)
+        self._android_timer.setInterval(REFRESH_INTERVAL_MS)
+        self._android_timer.timeout.connect(self._android_refresh_counters)
+        self._android_dialog: AndroidDiagnosticsDialog | None = None
         splitter.addWidget(live)
 
         steps = QWidget()
@@ -215,6 +233,9 @@ class MainWindow(QMainWindow):
         target_menu = bar.addMenu("&Target")
         self._action(target_menu, "Connect / Disconnect", self._toggle_connect, "Ctrl+K")
         self._action(target_menu, "Recover interrupted recording…", self._recover)
+        target_menu.addSeparator()
+        self._action(target_menu, "Reconnect Android device", self._android_reconnect)
+        self._action(target_menu, "Android diagnostics…", self._android_diagnostics)
         run_menu = bar.addMenu("&Run")
         self._action(run_menu, "Validate", self._validate)
         self._action(run_menu, "Validate with Argus", lambda: self._validate(with_argus=True))
@@ -247,6 +268,10 @@ class MainWindow(QMainWindow):
         b.on(ScreenshotCaptured, self._screenshot_captured)
         b.on(AssertionSuggested, lambda e: self.suggestions.add_candidates(e.candidates))
         b.on(RecordingFailed, self._recording_failed)
+        b.on(RecordingStarted, lambda _e: self._android_recording_changed())
+        b.on(RecordingStopped, lambda _e: self._android_recording_changed())
+        b.on(TargetLost, self._target_lost)
+        b.on(TargetRestored, lambda _e: self._android_restored())
         b.on(ValidationCompleted, lambda e: self._show_issues(e.issues, e.argus_checked))
         b.on(RunStarted, lambda e: self.run_panel.start(e.test_id))
         b.on(RunOutput, lambda e: self.run_panel.append(e.line))
@@ -319,6 +344,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Limitations: " + " ".join(limitations), 8000)
         else:
             self._preview_timer.stop()
+        self._android_connection_changed(connected)
         self._update_buttons()
 
     def _refresh_live(self) -> None:
@@ -367,6 +393,7 @@ class MainWindow(QMainWindow):
             show_error(self, "Target", exc)
         self._connection_changed(False)
         self._refresh_document()
+        self._android_target_changed()
 
     def _target_settings(self) -> None:
         if self.app.recorder is None:
@@ -471,6 +498,131 @@ class MainWindow(QMainWindow):
         recorder = self.app.recorder
         if recorder is not None and hasattr(recorder, "send_text"):
             recorder.send_text(text)
+
+    # -- android ----------------------------------------------------------------------------
+
+    @property
+    def _android(self) -> bool:
+        recorder = self.app.recorder
+        return recorder is not None and recorder.target.adapter == "android"
+
+    def _android_target_changed(self) -> None:
+        self.android_panel.setVisible(self._android)
+        if self._android:
+            self._android_refresh_devices()
+
+    def _android_refresh_devices(self) -> None:
+        if not self._android:
+            return
+        recorder = self.app.recorder
+        serial = str(recorder.target.settings.get("serial") or "") if recorder else ""
+        job = self.app.workers.submit("adb-devices", self.app.list_target_devices)
+        watch(job, lambda devices: self.android_panel.set_devices(devices, serial),
+              lambda exc: self.statusBar().showMessage(f"adb: {exc}", 8000), self)
+
+    def _android_device_selected(self, serial: str) -> None:
+        if not self._android or self.app.recorder is None:
+            return
+        target_id = self.app.recorder.target.id
+        try:
+            self.app.select_target(target_id, {"serial": serial})
+        except CreatorError as exc:
+            show_error(self, "Android device", exc)
+        self._connection_changed(False)
+
+    def _android_connection_changed(self, connected: bool) -> None:
+        if not self._android:
+            self.android_panel.setVisible(False)
+            return
+        self.android_panel.setVisible(True)
+        recorder = self.app.recorder
+        diagnostics = getattr(recorder, "diagnostics", None)
+        if connected and diagnostics is not None:
+            self.android_panel.show_connected(diagnostics.snapshot())
+        else:
+            lost = bool(getattr(recorder, "target_lost", False))
+            self.android_panel.show_disconnected(lost=lost)
+
+    def _android_recording_changed(self) -> None:
+        session = self.app.session
+        recording = self._android and session is not None and session.state.value in (
+            "recording", "paused")
+        if recording:
+            self._android_timer.start()
+            self._android_refresh_counters()
+        else:
+            self._android_timer.stop()
+            self._android_refresh_counters()
+
+    def _android_refresh_counters(self) -> None:
+        """Throttled: reads a diagnostics snapshot, never raw events."""
+        if not self._android:
+            return
+        recorder = self.app.recorder
+        diagnostics = getattr(recorder, "diagnostics", None)
+        session = self.app.session
+        if diagnostics is None:
+            return
+        snapshot = diagnostics.snapshot()
+        if session is not None and session.state.value in ("recording", "paused"):
+            self.android_panel.show_recording(snapshot, len(session.actions),
+                                              paused=session.state.value == "paused")
+            if getattr(recorder, "target_lost", False):
+                self.android_panel.show_disconnected(lost=True)
+        elif recorder is not None and recorder.connected:
+            self.android_panel.show_connected(snapshot)
+        if self._android_dialog is not None and self._android_dialog.isVisible():
+            self._android_dialog.show_snapshot(
+                snapshot, action_count=len(session.actions) if session else None)
+
+    def _target_lost(self, event: TargetLost) -> None:
+        self.android_panel.show_disconnected(lost=True)
+        self.connection_label.setText("⚠ Device disconnected — recording paused")
+        self._preview_timer.stop()
+        self._update_buttons()
+        if not self.prompt_on_close:  # tests: no modal dialogs
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Device disconnected")
+        box.setText(f"{event.message}\n\nRecording paused. Everything recorded so far is kept.")
+        if event.remediation:
+            box.setInformativeText(event.remediation)
+        reconnect = box.addButton("Reconnect", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Stop Recording", QMessageBox.ButtonRole.DestructiveRole)
+        box.exec()
+        if box.clickedButton() is reconnect:
+            self._android_reconnect()
+        else:
+            self._stop()
+
+    def _android_reconnect(self) -> None:
+        if self.app.recorder is None:
+            return
+        self.statusBar().showMessage("Reconnecting…")
+        job = self.app.workers.submit("adb-reconnect", self.app.reconnect_target)
+        watch(job, lambda _r: self.statusBar().showMessage("Device reconnected", 5000),
+              lambda exc: show_error(self, "Reconnect", exc), self)
+
+    def _android_restored(self) -> None:
+        self._connection_changed(True)
+        self._set_status("Recording")
+
+    def _android_diagnostics(self) -> None:
+        if not self._android:
+            QMessageBox.information(self, "Android diagnostics",
+                                    "Select the Android target first.")
+            return
+        if self._android_dialog is None:
+            self._android_dialog = AndroidDiagnosticsDialog(self)
+        self._android_refresh_counters()
+        diagnostics = getattr(self.app.recorder, "diagnostics", None)
+        if diagnostics is not None:
+            session = self.app.session
+            self._android_dialog.show_snapshot(
+                diagnostics.snapshot(), action_count=len(session.actions) if session else None)
+        self._android_dialog.show()
+        self._android_dialog.raise_()
 
     # -- steps ------------------------------------------------------------------------------
 

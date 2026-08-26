@@ -21,7 +21,7 @@ Argus adapters):
 | Fake (Movies demo) | via Creator | tap, key, text, drag | yes | fake (deterministic) | basis for tests |
 | Web browser | click, drag, keys, scroll, navigation | — | yes | tesseract | DOM evidence kept as metadata |
 | Desktop | mouse, keys, scroll | — | yes (primary monitor) | tesseract | needs OS permissions |
-| Android | **not observed** | tap, key, text, swipe via ADB | yes (`screencap`) | tesseract | every sent input is recorded exactly |
+| Android | tap, swipe, long press, multi-touch, hardware keys (`adb shell getevent`) | tap, key, text, swipe via ADB | yes (`screencap`) | tesseract | injected input is not observed by `getevent`, so nothing is recorded twice |
 | iOS / Roku / tvOS / Apple TV / ESP32 / Yocto | no recorder yet | — | per Argus adapter | — | author with the wizard |
 
 ## Browser (Playwright)
@@ -42,10 +42,20 @@ Set `command` in target settings so Argus can launch the application (`device.st
 
 ## Android (ADB)
 
-Requires `adb` on `PATH` (or `adb_path`). Settings: `serial`, `app_package`, `app_activity`.
-The Creator sends taps (click the live view), keys and text (remote panel), and swipes through
-`adb shell input`; screenshots come from `adb exec-out screencap -p`. Touching the physical
-screen is not observed in this version — the adapter says so in its limitations.
+Requires `adb` on `PATH` (or `adb_path`). Settings: `serial` (required when several devices
+are connected — the Creator never picks one silently), `input_device`, `invert_x`/`invert_y`/
+`swap_axes`, gesture thresholds, `app_package`, `app_activity`.
+
+Touches and hardware keys on the device are **observed** through a streaming
+`adb shell getevent -lt`: raw Linux input events are parsed, multi-touch slots tracked,
+coordinates mapped from the panel's axis ranges to the (rotated) screen, and gestures
+recognized — tap, swipe, long press, multi-touch, key — before they reach the session as
+semantic events. The touchscreen is discovered from `getevent -lp` (never a hardcoded
+`/dev/input/eventN`). The Creator can still send taps (click the live view), keys and text
+(remote panel) through `adb shell input`; screenshots come from `adb exec-out screencap -p`.
+A disconnected device pauses the recording and offers **Reconnect**. See
+[android-recording.md](android-recording.md) for the full guide, settings and device
+differences.
 
 ## Session storage and recovery
 
