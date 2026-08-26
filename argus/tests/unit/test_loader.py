@@ -170,3 +170,58 @@ def test_features_must_be_mapping(tmp_path):
     write(tmp_path, "a.yaml", "features: [1]\n")
     with pytest.raises(TestDefinitionError, match="'features' must be a mapping"):
         load_suite([tmp_path])
+
+
+# -- suite-level setup/teardown ------------------------------------------------------
+
+SUITE_LIFECYCLE = """
+suite:
+  setup:
+    - action: log
+      message: suite setup
+  teardown:
+    - action: log
+      message: suite teardown
+  device: fake_android
+tests:
+  - id: S-001
+    name: One
+    feature: movies
+    steps:
+      - action: log
+        message: one
+"""
+
+
+def test_load_suite_returns_suite_lifecycle(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "movies.yaml", SUITE_LIFECYCLE)
+    suite = load_suite([tmp_path])
+    assert suite.lifecycle is not None
+    assert [s.action for s in suite.lifecycle.setup] == ["log"]
+    assert [s.action for s in suite.lifecycle.teardown] == ["log"]
+    assert suite.lifecycle.device == "fake_android"
+    assert suite.lifecycle.source_file.endswith("movies.yaml")
+    assert [t.id for t in suite.tests] == ["S-001"]
+    assert load_suite([tmp_path / "nope"]).lifecycle is None
+
+
+def test_duplicate_suite_lifecycle_rejected(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "a.yaml", SUITE_LIFECYCLE)
+    write(tmp_path, "b.yaml", SUITE_LIFECYCLE.replace("S-001", "S-002"))
+    with pytest.raises(TestDefinitionError, match="Duplicate suite"):
+        load_suite([tmp_path])
+
+
+def test_invalid_suite_lifecycle_rejected(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "a.yaml", "suite:\n  setup:\n    - message: x\n")
+    with pytest.raises(TestDefinitionError, match="Invalid suite definition"):
+        load_suite([tmp_path])
+    write(tmp_path, "a.yaml", "suite: [1]\n")
+    with pytest.raises(TestDefinitionError, match="'suite' must be a mapping"):
+        load_suite([tmp_path])

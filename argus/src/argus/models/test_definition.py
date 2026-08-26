@@ -105,6 +105,25 @@ class FeatureDefinition(BaseModel):
     source_file: str | None = None
 
 
+class SuiteDefinition(BaseModel):
+    """Suite-level lifecycle: steps run once per run, before the first selected test
+    and after the last one (teardown always runs)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    setup: list[Step] = Field(default_factory=list)
+    teardown: list[Step] = Field(default_factory=list)
+    #: Configured device to bind for ``device.*`` steps (default: none).
+    device: str | None = None
+
+    # Populated by the loader; not authored in YAML.
+    source_file: str | None = None
+
+    @property
+    def empty(self) -> bool:
+        return not (self.setup or self.teardown)
+
+
 class TestDefinition(BaseModel):
     """A complete YAML test definition."""
 

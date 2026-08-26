@@ -89,6 +89,32 @@ class FeatureTeardownCompleted(Event):
 
 
 @dataclass(frozen=True)
+class SuiteSetupStarted(Event):
+    device: str | None = None
+
+
+@dataclass(frozen=True)
+class SuiteSetupCompleted(Event):
+    passed: bool
+    device: str | None = None
+    error: str | None = None
+    steps: list[StepResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SuiteTeardownStarted(Event):
+    device: str | None = None
+
+
+@dataclass(frozen=True)
+class SuiteTeardownCompleted(Event):
+    passed: bool
+    device: str | None = None
+    error: str | None = None
+    steps: list[StepResult] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class ActionStarted(Event):
     test_id: str
     action: str
