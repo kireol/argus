@@ -102,6 +102,13 @@ tr.hidden { display: none; }
 .images figcaption {
   background: #fff; color: var(--muted); font-size: .75rem; padding: .35rem .55rem;
 }
+.ocr { margin-top: .6rem; }
+.ocr summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.ocr pre {
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  padding: .6rem .8rem; font-size: .78rem; max-height: 18rem; overflow: auto;
+  white-space: pre-wrap; margin: .4rem 0 0;
+}
 a { color: var(--accent); }
 .footer { margin-top: 2rem; color: var(--muted); font-size: .8rem; }
 .meta { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem;
@@ -188,6 +195,25 @@ def _image_gallery(test: TestResult, report_dir: Path) -> str:
     return f'<div class="images">{"".join(figures)}</div>'
 
 
+_OCR_TEXT_LIMIT = 4000
+
+
+def _ocr_text(test: TestResult) -> str:
+    """Contents of ``ocr.txt`` (text-verification evidence), truncated for the page."""
+    if not test.artifact_dir:
+        return ""
+    path = Path(test.artifact_dir) / "ocr.txt"
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if len(text) > _OCR_TEXT_LIMIT:
+        text = text[:_OCR_TEXT_LIMIT] + "\n… (truncated; see ocr.txt)"
+    return text
+
+
 def _steps_html(test: TestResult) -> str:
     if not test.steps:
         return ""
@@ -238,6 +264,12 @@ def _detail_row(test: TestResult, report_dir: Path) -> str | None:
     elif test.artifact_dir:
         parts.append(
             f'<p class="muted">artifacts: {html.escape(test.artifact_dir)}</p>'
+        )
+    ocr_text = _ocr_text(test)
+    if ocr_text:
+        parts.append(
+            '<details class="ocr"><summary>OCR evidence (ocr.txt)</summary>'
+            f"<pre>{html.escape(ocr_text)}</pre></details>"
         )
     if not parts:
         return None
