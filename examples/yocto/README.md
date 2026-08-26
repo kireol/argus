@@ -74,8 +74,20 @@ bitbake argus-demo
 The recipe (`argus-demo_1.0.bb`) installs `argus_demo.py` as `/usr/bin/argus-demo`,
 installs `argus-demo.service` under the systemd unit dir, `inherit systemd`s
 it (`SYSTEMD_SERVICE:${PN} = "argus-demo.service"`, auto-enabled), and depends
-on `python3-pygame` and `python3-core` at runtime. Include `argus-demo` in
-your image (`IMAGE_INSTALL:append = " argus-demo"`) and flash/boot as usual.
+on `python3-pygame`, `python3-core`, `python3-json`, `python3-netserver`,
+`python3-threading`, `python3-io`, and `python3-argparse` at runtime. These
+module packages come from OE-core's `python3` manifest (`meta/recipes-devtools/
+python/python3_*.bb`'s `PACKAGES`/`FILES` split) and match the stdlib modules
+`argus_demo.py` imports, but the recipe has not itself been build-verified in
+a real Yocto build (no Yocto toolchain was available in this environment) —
+double-check the package names against your layer's python3 manifest if the
+image build fails to resolve them. Include `argus-demo` in your image
+(`IMAGE_INSTALL:append = " argus-demo"`) and flash/boot as usual. The
+screenshot command in `argus.yaml` runs `curl` *on the target* (it's how
+the adapter pulls a PNG off the instrumentation server over SSH), so also
+make sure `curl` is present in the target image, e.g.
+`IMAGE_INSTALL:append = " argus-demo curl"` — most `core-image-*` targets
+already include it, but minimal/custom images may not.
 
 ## Run the app
 
@@ -106,7 +118,7 @@ From the repository root, with the target reachable over SSH:
 
 ```bash
 YOCTO_HOST=192.168.1.50 YOCTO_USER=root YOCTO_KEY=~/.ssh/id_ed25519 \
-    argus run --config examples/yocto/argus.yaml
+    .venv/bin/argus run --config examples/yocto/argus.yaml
 ```
 
 ## What the tests show

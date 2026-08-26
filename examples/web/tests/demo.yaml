@@ -83,7 +83,7 @@ tests:
       Tapping "+" once increments the counter and updates the on-screen
       state.
     feature: Demo
-    tags: [smoke]
+    tags: [smoke, visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -110,7 +110,7 @@ tests:
       Tapping "+" three times shows "Count: 3" and logs the counter after
       each tap.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -141,7 +141,7 @@ tests:
     description: >
       Tapping "Settings" opens the settings screen.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -152,9 +152,11 @@ tests:
         x: 640
         y: 500
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
       - action: verify
         condition:
@@ -168,7 +170,7 @@ tests:
       Incrementing the counter, opening Settings, then tapping "Back"
       returns to Home with the counter preserved.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -182,9 +184,11 @@ tests:
         x: 640
         y: 500
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
       - action: device.tap
         x: 640
@@ -202,7 +206,7 @@ tests:
       green to purple. The swatch only exists on the Home screen, so the
       test returns Home (via "Back") before reading its pixel colour.
     feature: Demo
-    tags: [visual]
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -212,9 +216,11 @@ tests:
         x: 640
         y: 500
       - action: wait_until
+        # NOT "Settings": that string is also on the home screen (the
+        # button we just pressed). "Dark theme" only exists here.
         condition:
           type: text_present
-          text: "Settings"
+          text: "Dark theme"
         timeout: 10s
     steps:
       - action: device.tap
@@ -252,7 +258,7 @@ tests:
       Setting the counter through the backend is picked up by the page's
       500ms poll and shown on screen.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -283,7 +289,7 @@ tests:
       device (the page re-reads backend state on load) shows "Count: 0"
       again.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post
@@ -320,7 +326,7 @@ tests:
     description: >
       Capture a screenshot of the home screen as a documentation artifact.
     feature: Demo
-    tags: []
+    tags: [visual, ocr]
     platforms: [web]
     setup:
       - action: backend.post

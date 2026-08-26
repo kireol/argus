@@ -3,13 +3,16 @@
     <script type="text/brightscript" uri="pkg:/components/DemoScene.brs" />
 
     <children>
-        <!-- Full-screen background; recoloured by applyTheme(). -->
-        <Rectangle id="background" translation="[0,0]" width="1920" height="1080" color="#ffffff" />
+        <!-- Full-screen background; recoloured by applyTheme(). Colours are
+             spelled out as RRGGBBAA (full "FF" alpha) rather than RRGGBB so
+             the value Argus reads back via pixel_matches always includes an
+             explicit, non-implicit alpha channel. -->
+        <Rectangle id="background" translation="[0,0]" width="1920" height="1080" color="#ffffffFF" />
 
         <!-- Theme swatch: green in light theme, purple in dark theme. Stays
              visible on both Home and Settings so tests can check it right
              after toggling the theme. -->
-        <Rectangle id="swatch" translation="[1500,100]" width="200" height="100" color="#2ecc71" />
+        <Rectangle id="swatch" translation="[1500,100]" width="200" height="100" color="#2ecc71FF" />
 
         <!-- Home screen -->
         <Label id="title" text="Argus Demo" translation="[100,80]" font="font:LargeBoldSystemFont" color="#000000" />

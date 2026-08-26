@@ -65,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, dict(_state))
 
     def log_message(self, fmt, *args):  # quieter console
-        print("%s %s" % (self.command, self.path))
+        print(f"{self.command} {self.path}")
 
 
 def main() -> None:
