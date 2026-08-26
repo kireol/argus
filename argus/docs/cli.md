@@ -97,6 +97,33 @@ Exit codes: `0` success · `1` test failure · `2` configuration · `3`
 environment · `4` test definition · `5` reporting · `6` policy · `7` internal
 · `8` cancelled. Full reference: [ci-cd.md](ci-cd.md).
 
+## argus stress
+
+Monkey / stress / chaos testing over the same engine: randomized, screen-aware
+UI actions, backend mutations and fault injection under a reproducible seed,
+with structured failures, evidence, replay and minimization. Full reference:
+[stress-testing.md](stress-testing.md).
+
+```bash
+argus stress                                        # stress: section of the config
+argus stress --scenario examples/stress/checkout-chaos.yaml
+argus stress --seed 84729163 --duration 10m         # deterministic, bounded
+argus stress --dry-run                              # plan; every mutation blocked
+argus stress --allow-destructive --stop-on-first    # opt in to delete/disable
+argus stress list                                   # recorded runs
+argus stress replay <run-id>                        # re-execute the recorded trace
+argus stress minimize <run-id> --failure crash:crash  # shortest reproduction
+```
+
+Options: `--scenario`, `--seed`, `--device`, `--duration`, `--max-actions`,
+`--dry-run`, `--allow-destructive`, `--stop-on-first/--continue`,
+`--verbosity quiet|normal|verbose|debug|trace`, `--no-persist`.
+
+Exit codes: `0` no error/critical application failure · `1` failures found ·
+`2` configuration / unknown run · `3` infrastructure error · `130` cancelled.
+Runs land in `results/stress/<run-id>/` (`run.json`, `trace.jsonl`,
+`failures/<id>/`).
+
 ## argus validate
 
 Environment diagnosis, section by section, with

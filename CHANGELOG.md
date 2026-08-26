@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Stress / monkey / chaos testing (`argus stress`).** A deterministic,
+  extensible subsystem (`argus.stress`) that drives randomized screen-aware UI
+  actions, mutates backend entities underneath the app (context-aware, with
+  data-mutation strategies and explicit safety boundaries), injects faults
+  through pluggable injectors, detects failures from observable behaviour
+  (crash, hang, blank/error screens, stale state, unexpected success), collects
+  evidence, records an append-only trace, and supports `--dry-run`, seed
+  reproduction, `argus stress replay <run-id>` and delta-debugging
+  `argus stress minimize <run-id>`. Ships a self-contained demo store
+  (`type: stress_demo`) and `examples/stress/checkout-chaos.yaml`.
+  See `argus/docs/stress-testing.md`.
+
 ### Changed
 - **Repository layout (monorepo).** Argus now lives in `argus/` and the Argus
   Test Creator (previously the separate `argus-test-creator` repository,

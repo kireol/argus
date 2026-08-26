@@ -64,6 +64,10 @@ src/argus/
 ├── service/          ArgusService facade, cached test catalog, background
 │                     RunRegistry (run ids, EventBus capture, device leases),
 │                     environment validation — shared by CLI, MCP, future GUI
+├── stress/           monkey / stress / chaos engine: deterministic RNG + clock,
+│                     StressContext, action/mutation/detector/fault registries,
+│                     screen-aware targets, mutation backends + safety, JSONL
+│                     trace, evidence, replay, ddmin minimizer, demo store
 ├── mcp/              Model Context Protocol server: tools, resources, prompts,
 │                     schemas, transports (stdio / Streamable HTTP), auth
 ├── cli/              Typer CLI — a thin client of the service layer

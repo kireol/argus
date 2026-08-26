@@ -114,6 +114,7 @@ See `argus --help` / `argus run --help` for the full option list.
 | Image verification | [docs/image-verification.md](docs/image-verification.md) |
 | App instrumentation protocol | [docs/instrumentation.md](docs/instrumentation.md) |
 | CLI reference | [docs/cli.md](docs/cli.md) |
+| Stress / monkey / chaos testing | [docs/stress-testing.md](docs/stress-testing.md) |
 | Plugin development | [docs/plugin-development.md](docs/plugin-development.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | MCP server (AI clients) | [docs/mcp.md](docs/mcp.md) |

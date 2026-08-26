@@ -1,0 +1,115 @@
+# Argus stress scenario: a user browses products and checks out while the
+# backend mutates/deletes products underneath the app.
+#
+#     argus stress --scenario examples/stress/checkout-chaos.yaml
+#     argus stress --scenario examples/stress/checkout-chaos.yaml --seed 84729163
+#     argus stress --scenario examples/stress/checkout-chaos.yaml --dry-run
+#     argus stress replay <run-id>
+#     argus stress minimize <run-id>
+#
+# The scenario is self-contained: it uses the built-in demo store (a fake
+# device that *is* a small application, rendering the fake backend's state).
+# `buggy: true` makes checkout accept products the backend already deleted —
+# the stale-state defect the run is expected to find and report.
+
+backend:
+  type: stress_demo
+
+devices:
+  store:
+    type: stress_demo
+    platform: fake
+    buggy: true              # the defect under test (set false → no stale checkout)
+    crash_on_text: "<script>"  # typing this into search crashes the app
+
+stress:
+  name: checkout-chaos
+  description: Browse, add to cart and check out while products change underneath.
+  seed: 84729163
+  device: store
+  duration: 1m
+  max_actions: 300
+
+  monkey:
+    enabled: true
+    actions:
+      tap: 45
+      swipe: 8
+      scroll: 8
+      back: 10
+      type_text: 8
+      long_press: 3
+      double_tap: 3
+      wait: 5
+      restart: 2
+    delay:
+      min: 0.01
+      max: 0.05
+    burst_probability: 0.1
+    targets:
+      prefer_known: 0.9
+      avoid_words: ["Application not running"]
+      regions:
+        - {name: "Add to cart / Checkout", x: 40, y: 1080, width: 640, height: 80, weight: 3}
+        - {name: "Back", x: 40, y: 1180, width: 640, height: 80}
+    typing:
+      # Add "<script>" here to also exercise crash detection + relaunch (crash_on_text).
+      words: ["batman", "matrix", "dune", "zzz"]
+
+  backend_mutations:
+    enabled: true
+    probability: 0.15
+    contextual_probability: 0.9
+    operations:
+      create: {enabled: true, weight: 25}
+      update: {enabled: true, weight: 50}
+      delete: {enabled: true, weight: 8}
+      disable: {enabled: true, weight: 7}
+      duplicate: {enabled: true, weight: 10}
+    entities:
+      products:
+        operations: [create, update, delete]
+        id_field: id
+        state_key: products
+        current_key: current_product
+        fields:
+          title: {type: string, display: true}
+          price: {type: number, min: 0, max: 100}
+          stock: {type: integer, min: 0, max: 50}
+          status: {type: enum, values: [active, disabled]}
+        disable: {status: disabled}
+    scheduled:
+      # The targeted race: whenever the cart is on screen, delete the product the
+      # user is about to check out (200 ms later), every time it happens.
+      - {mutation: delete, entity: products, timing: on_context, when_text: "Your cart",
+         delay: 200ms, repeat: true}
+    reconcile_timeout: 1s
+
+  data_mutations:
+    probability: 0.4
+    "null": true
+    empty: true
+    very_long_string: true
+    unicode: true
+    out_of_range: true
+    negative: true
+    invalid_enum: true
+
+  faults:
+    enabled: false           # the demo backend is in-process; enable with a real backend
+
+  failures:
+    stop_on_first: false
+    max_failures: 25
+    error_words: ["something went wrong", "exception", "not running"]
+
+  safety:
+    allow_destructive_mutations: true
+    environment: test
+    allowed_environments: [test]
+    allowed_entities: [products]
+
+  evidence:
+    history: 40
+    observations: 3
+    save_screenshots: true
