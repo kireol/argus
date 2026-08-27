@@ -4,8 +4,9 @@ Performance notes:
 - Reference images are cached by :class:`AssetStore`.
 - When a region is given, the screenshot is cropped *before* matching.
 - One observation can feed all of these verifiers without re-capturing.
-- Multiscale search tries scale 1.0 first and stops once confidence meets
-  the threshold (remaining scales only run when needed).
+- Multiscale search tries scale 1.0 first (and an auto-fit scale when the
+  native template cannot fit the search area) and stops once confidence
+  meets the threshold (remaining scales only run when needed).
 """
 
 from __future__ import annotations
@@ -119,9 +120,18 @@ class _ImageVerifierBase(Verifier):
         return threshold, grayscale, method
 
     def _find_template(
-        self, observation: Observation, expectation: Expectation
+        self,
+        observation: Observation,
+        expectation: Expectation,
+        *,
+        allow_auto_shrink: bool = True,
     ) -> tuple[float, Region | None, Region | None]:
-        """Template-match the expected image; returns (confidence, location, region_used)."""
+        """Template-match the expected image; returns (confidence, location, region_used).
+
+        ``allow_auto_shrink`` adds shrink steps down to 16px so a Figma master
+        can match a small on-screen icon. Leave it off for ``image_not_present``:
+        a 140px Park ``P`` scaled to 28px false-matches speedo chrome.
+        """
         if not expectation.image:
             raise VerificationError(
                 f"Verifier {self.name!r} requires an 'image' parameter."
@@ -144,11 +154,17 @@ class _ImageVerifierBase(Verifier):
             if expectation.scale_tolerance is not None
             else self._config.scale_tolerance
         )
-        # Only hard-fail when no scaled size can fit (incl. scale_tolerance shrink).
-        min_scale = max(0.25, 1.0 - scale_tolerance) if scale_tolerance > 0 else 1.0
-        min_h = max(_MIN_TEMPLATE_SIDE, int(th * min_scale))
-        min_w = max(_MIN_TEMPLATE_SIDE, int(tw * min_scale))
-        if min_h > hh or min_w > hw:
+        native_fits = th <= hh and tw <= hw
+        fit_scale = min(hw / tw, hh / th) if tw > 0 and th > 0 else 0.0
+        min_fit = (
+            _MIN_TEMPLATE_SIDE / min(th, tw) if min(th, tw) > 0 else 1.0
+        )
+        # Hard-fail only when even a 16px template cannot fit the search area.
+        # Native size that does not fit is downscaled automatically — tests do
+        # not need scale_tolerance just because a golden is larger than a region.
+        if hh < _MIN_TEMPLATE_SIDE or hw < _MIN_TEMPLATE_SIDE or (
+            not native_fits and fit_scale < min_fit
+        ):
             raise VerificationError(
                 f"Reference image {expectation.image!r} ({tw}x{th}) is larger than "
                 f"the search area ({hw}x{hh}). Check the region or image scale.",
@@ -174,23 +190,51 @@ class _ImageVerifierBase(Verifier):
             if method not in _MASK_COMPATIBLE_METHODS:
                 method = cv2.TM_CCORR_NORMED
 
-        # Prefer native scale first (usual happy path). Then try other scales
-        # nearest to 1.0 so slight DPI drift exits early without a full sweep.
+        # Prefer native scale first (usual happy path). If it cannot fit the
+        # haystack, try the largest scale that does. Then other scales nearest
+        # to 1.0 so slight DPI drift exits early without a full sweep.
         scales = [1.0]
+        if not native_fits and fit_scale > 0:
+            rounded_fit = round(fit_scale, 4)
+            if abs(rounded_fit - 1.0) > 1e-4:
+                scales.append(rounded_fit)
+        min_lo = _MIN_TEMPLATE_SIDE / min(th, tw) if min(th, tw) > 0 else 1.0
         if scale_tolerance > 0:
             # Sample between (1-tol) and (1+tol). Three endpoints alone miss
             # mid values (e.g. tol 0.5 needs ~0.55 for Config F telltale icons).
             # Floor lo so a large tol (legacy YAML uses 1.2) cannot shrink the
             # template into noise-sized matches.
-            lo = max(0.25, 1.0 - scale_tolerance)
+            lo = max(min_lo, 1.0 - scale_tolerance)
             hi = 1.0 + scale_tolerance
             step = 0.05
             n = int(round((hi - lo) / step)) + 1
             n = max(3, min(n, 41))
             sampled = [lo + i * (hi - lo) / (n - 1) for i in range(n)]
-            others = [s for s in sampled if abs(s - 1.0) > 1e-9]
+            others = [
+                s
+                for s in sampled
+                if abs(s - 1.0) > 1e-9
+                and all(abs(s - existing) > 1e-4 for existing in scales)
+            ]
             others.sort(key=lambda s: abs(s - 1.0))
-            scales = [1.0] + others
+            scales.extend(others)
+        # Goldens are often the Figma master (e.g. 96×112) while the app
+        # draws a ~22px instance. image_present offers shrink steps down to
+        # 16px; native hits still early-exit after scale 1.0.
+        # image_not_present must not: a large glyph shrunk to ~28px matches
+        # unrelated chrome (Park ``P`` vs a digital ``0``).
+        if allow_auto_shrink and min_lo < 0.99:
+            shrink: list[float] = []
+            step = 0.1
+            s = 1.0 - step
+            while s >= min_lo - 1e-9:
+                shrink.append(round(s, 3))
+                s -= step
+            shrink.append(round(min_lo, 4))
+            shrink.sort(key=lambda v: abs(v - 1.0))
+            for s in shrink:
+                if s > 0 and all(abs(s - existing) > 0.04 for existing in scales):
+                    scales.append(s)
 
         best_confidence = -1.0
         best_location: Region | None = None
@@ -210,6 +254,8 @@ class _ImageVerifierBase(Verifier):
                         mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST
                     )
             sh, sw = scaled.shape[:2]
+            if sh > hh or sw > hw:
+                continue
             if sh < _MIN_TEMPLATE_SIDE or sw < _MIN_TEMPLATE_SIDE:
                 continue
             if scaled_mask is not None:
@@ -272,7 +318,9 @@ class ImageAbsentVerifier(_ImageVerifierBase):
 
     def verify(self, observation: Observation, expectation: Expectation) -> VerificationResult:
         threshold, _, _ = self._settings(expectation)
-        confidence, location, region = self._find_template(observation, expectation)
+        confidence, location, region = self._find_template(
+            observation, expectation, allow_auto_shrink=False
+        )
         passed = confidence < threshold
         return VerificationResult(
             passed=passed,

@@ -38,6 +38,7 @@ class FakeDevice(Device):
         available: bool = True,
         platform: str = "fake",
         render: dict[str, Any] | None = None,
+        metrics_sample: dict[str, float] | None = None,
     ) -> None:
         super().__init__(name)
         self._screen_size = screen_size
@@ -61,6 +62,9 @@ class FakeDevice(Device):
         self.log_lines: list[str] = ["fake device log"]
         self.screenshot_count = 0
         self.playback_state: PlaybackState | None = None
+        self.metrics_sample: dict[str, float] = {
+            str(k): float(v) for k, v in (metrics_sample or {}).items()
+        }
 
     @classmethod
     def from_config(cls, name: str, config: DeviceConfig) -> FakeDevice:
@@ -74,6 +78,7 @@ class FakeDevice(Device):
             platform=config.effective_platform,
             render=options.get("render"),
             fail_first_screenshots=int(options.get("fail_first_screenshots", 0) or 0),
+            metrics_sample=options.get("metrics_sample") or {},
         )
 
     def bind_state_provider(self, provider: Callable[[], dict[str, Any]]) -> None:
@@ -234,6 +239,9 @@ class FakeDevice(Device):
 
     def get_playback_state(self) -> PlaybackState:
         return self.playback_state or PlaybackState(state="idle")
+
+    def sample_metrics(self) -> dict[str, float]:
+        return dict(self.metrics_sample)
 
     # -- input ------------------------------------------------------------------------------
 

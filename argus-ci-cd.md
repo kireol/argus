@@ -1262,7 +1262,7 @@ balanced
 
 `balanced` attempts to distribute tests reasonably across workers.
 
-Do not build a distributed cluster scheduler in v1.
+Do not build a distributed job scheduler in v1.
 
 However, design interfaces so distributed execution can be added later.
 

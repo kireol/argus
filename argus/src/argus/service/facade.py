@@ -631,6 +631,7 @@ _ARTIFACT_KINDS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"(^|_)diff\.png$"), "diff", "Visual difference between actual and expected"),
     (re.compile(r"^logs\.txt$"), "log", "Device log captured after the failure"),
     (re.compile(r"^instrumentation\.json$"), "instrumentation", "Application-reported state"),
+    (re.compile(r"^metrics\.json$"), "metrics", "In-run FPS, jank, memory and load samples"),
     (re.compile(r"^metadata\.json$"), "metadata", "Structured test result"),
     (re.compile(r"^report\.json$"), "report", "Machine-readable run report"),
     (re.compile(r"^report\.html$"), "report", "HTML run report"),

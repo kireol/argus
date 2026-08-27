@@ -16,6 +16,11 @@ from PIL import Image as PILImage
 from PIL.Image import Image
 
 from argus.adapters.base import Device, DeviceCapabilities, ScreenshotProvider
+from argus.adapters.runtime_metrics import (
+    ProcMetricsState,
+    linux_snapshot_script,
+    parse_linux_metrics,
+)
 from argus.config.models import DeviceConfig
 from argus.exceptions import (
     ConfigurationError,
@@ -211,6 +216,7 @@ class YoctoAdapter(Device):
         self._log_command = log_command
         self._screen_size = screen_size
         self._screen_info_cache: ScreenInfo | None = None
+        self._metrics_state = ProcMetricsState()
         self._log = get_logger("argus.yocto", device=name)
 
     @classmethod
@@ -365,6 +371,22 @@ class YoctoAdapter(Device):
         )
         _, output, _ = self._transport.execute(command)
         return str(output)
+
+    def begin_metrics_session(self) -> None:
+        self._metrics_state = ProcMetricsState()
+
+    def sample_metrics(self) -> dict[str, float]:
+        script = linux_snapshot_script(process=self._app_process, gfxinfo=False)
+        try:
+            _code, output, _err = self._transport.execute(
+                "sh -c " + shlex.quote(script), timeout=8.0
+            )
+        except DeviceConnectionError:
+            return {}
+        try:
+            return parse_linux_metrics(str(output), self._metrics_state)
+        except (TypeError, ValueError):
+            return {}
 
     def execute(self, command: str, timeout: float | None = None) -> tuple[int, str, str]:
         """Arbitrary command execution (used by custom preflight checks/tools)."""

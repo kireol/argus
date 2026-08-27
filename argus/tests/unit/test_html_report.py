@@ -116,3 +116,45 @@ def test_html_report_omits_gallery_when_no_images(tmp_path: Path) -> None:
     assert "timeout" in html
     assert "artifacts:" in html
     assert "<img " not in html
+
+
+def test_html_report_shows_metrics_next_to_test(tmp_path: Path) -> None:
+    from argus.models.metrics import MetricSample, build_report
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    report = build_report(
+        {"fps": [30.0, 60.0, 60.0], "app_rss_mb": [100.0, 120.0, 110.0]},
+        interval_seconds=1.0,
+        samples=[
+            MetricSample(t=0.0, values={"fps": 30.0, "app_rss_mb": 100.0}),
+            MetricSample(t=1.0, values={"fps": 60.0, "app_rss_mb": 120.0}),
+            MetricSample(t=2.0, values={"fps": 60.0, "app_rss_mb": 110.0}),
+        ],
+    )
+    result = RunResult(
+        status=RunStatus.PASSED,
+        results_dir=str(run_dir),
+        tests=[
+            TestResult(
+                test_id="VM-TT-001",
+                name="battery telltale",
+                feature="Telltales",
+                status=TestStatus.PASSED,
+                duration=2.1,
+                platform="android",
+                metrics=report,
+            )
+        ],
+        metrics=report,
+    )
+    html = write_html_report(result, run_dir / "report.html").read_text(encoding="utf-8")
+    assert "Metrics" in html
+    assert "Average" in html
+    assert "Median" in html
+    assert "FPS" in html
+    assert "30" in html and "60" in html
+    assert "Samples during this test" in html
+    assert ">Average</th>" in html
+    assert ">Median</th>" in html
+

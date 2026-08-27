@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from argus import __version__
 from argus.ci.categories import FailureCategory
 from argus.ci.context import CIContext
+from argus.models.metrics import MetricsReport
 from argus.models.results import AttemptRecord, PreflightResult, RunResult, TestStatus
 
 #: Bump only for backward-incompatible changes to ``report.json``.
@@ -65,6 +66,7 @@ class CITestResult(BaseModel):
     #: Artifact paths relative to the CI output directory.
     artifacts: list[str] = Field(default_factory=list)
     attempt_history: list[AttemptRecord] = Field(default_factory=list)
+    metrics: MetricsReport | None = None
 
     @property
     def key(self) -> tuple[str, str | None]:
@@ -246,6 +248,7 @@ def ci_result_to_dict(result: CIRunResult) -> dict[str, Any]:
                 "worker": t.worker,
                 "artifacts": list(t.artifacts),
                 "attempt_history": [a.model_dump(mode="json") for a in t.attempt_history],
+                "metrics": t.metrics.model_dump(mode="json") if t.metrics else None,
             }
             for t in result.tests
         ],

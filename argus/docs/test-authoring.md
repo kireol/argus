@@ -236,7 +236,7 @@ suite:
       data: { catalog: loaded }
   teardown:                     # once, at the very end — always
     - action: backend.reset
-  device: cluster               # optional: bind a configured device for device.* steps
+  device: dashboard             # optional: bind a configured device for device.* steps
 ```
 
 Rules:

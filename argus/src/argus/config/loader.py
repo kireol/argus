@@ -118,6 +118,7 @@ def load_config(
         layers.append((user_cfg, _load_with_extends(user_cfg)))
 
     explicit: Path | None = None
+    explicit_devices: set[str] | None = None
     if config_file is not None:
         explicit = Path(config_file)
         if not explicit.is_file():
@@ -125,11 +126,25 @@ def load_config(
                 f"Configuration file not found: {explicit}",
                 remediation="Check the --config path, or run 'argus init' to create one.",
             )
-        layers.append((explicit, _load_with_extends(explicit)))
+        explicit_data = _load_with_extends(explicit)
+        layers.append((explicit, explicit_data))
+        if "devices" in explicit_data:
+            explicit_devices = set(explicit_data["devices"] or {})
 
     merged: dict[str, Any] = {}
     for _, layer in layers:
         merged = _deep_merge(merged, layer)
+
+    # --config names the device set for this run. User-config template devices
+    # (android / living_room from `argus init`) must not leak into a project
+    # config that only declared `fallback`. Matching keys still deep-merge so a
+    # user file can override serials on devices the project actually named.
+    if explicit_devices is not None and isinstance(merged.get("devices"), dict):
+        merged["devices"] = {
+            name: cfg
+            for name, cfg in merged["devices"].items()
+            if name in explicit_devices
+        }
 
     # Substitute environment variables; unresolved refs stay literal so that
     # optional components degrade to "not configured" instead of erroring.

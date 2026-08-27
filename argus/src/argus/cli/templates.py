@@ -58,6 +58,10 @@ wait:
   default_poll_interval: 500ms
   # reuse_wait_result_on_verify: true  # skip duplicate verify after wait_until
 
+# metrics:
+#   enabled: true     # FPS, jank, RSS, CPU, system load while each test runs
+#   interval: 1s
+
 results:
   dir: results
   retain_on_success: false

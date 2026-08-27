@@ -202,7 +202,7 @@ Prints the framework version.
 ```bash
 argus run --verbose            # DEBUG level
 argus run --quiet              # errors only, minimal console output
-argus run --no-logs            # keep progress; hide timestamped INFO lines
+argus run --no-logs            # keep progress; hide INFO lines and metric dumps
 argus run --log-level DEBUG    # explicit level
 ```
 

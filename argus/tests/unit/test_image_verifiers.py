@@ -145,11 +145,95 @@ class TestImagePresent:
         assert not present.verify(observe(screen), exp).passed
         assert absent.verify(observe(screen), exp).passed
 
+    def test_oversized_reference_fits_by_downscaling(self, image_config, tmp_path):
+        """A golden larger than the region is shrunk to fit (no scale_tolerance)."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (96, 112), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.polygon([(10, 56), (86, 10), (86, 102)], fill=(40, 220, 80))
+        ref.save(tmp_path / "left_turn_signal_on.png")
+
+        fit = min(80 / 96, 80 / 112)
+        on_screen = ref.resize((int(96 * fit), int(112 * fit)))
+        screen = Image.new("RGB", (200, 200), (0, 0, 0))
+        screen.paste(on_screen, (10, 10))
+
+        store = AssetStore([tmp_path])
+        verifier = ImagePresentVerifier(store, image_config)
+        result = verifier.verify(
+            observe(screen),
+            Expectation(
+                image="left_turn_signal_on.png",
+                region=Region(x=10, y=10, width=80, height=80),
+                threshold=0.80,
+            ),
+        )
+        assert result.passed
+        assert result.confidence is not None and result.confidence >= 0.80
+
+    def test_small_on_screen_icon_matches_large_golden(self, image_config, tmp_path):
+        """96×112 golden vs ~22px on-screen instance — no scale_tolerance needed."""
+        from PIL import Image, ImageDraw
+
+        ref = Image.new("RGB", (96, 112), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        draw.polygon([(10, 56), (86, 10), (86, 102)], fill=(40, 220, 80))
+        ref.save(tmp_path / "left_turn_signal_on.png")
+
+        on_screen = ref.resize((20, 23))
+        screen = Image.new("RGB", (200, 200), (0, 0, 0))
+        screen.paste(on_screen, (5, 5))
+
+        store = AssetStore([tmp_path])
+        present = ImagePresentVerifier(store, image_config)
+        absent = ImageAbsentVerifier(store, image_config)
+        exp = Expectation(
+            image="left_turn_signal_on.png",
+            region=Region(x=0, y=0, width=100, height=120),
+            threshold=0.80,
+            mask_background=True,
+        )
+        result = present.verify(observe(screen), exp)
+        assert result.passed, result.message
+        empty = Image.new("RGB", (200, 200), (0, 0, 0))
+        assert not present.verify(observe(empty), exp).passed
+        assert absent.verify(observe(empty), exp).passed
+
+    def test_absent_does_not_auto_shrink_large_glyph(self, image_config, tmp_path):
+        """A native-size Park P must not match a small '0' via 16px shrink."""
+        from PIL import Image, ImageDraw, ImageFont
+
+        ref = Image.new("RGB", (140, 150), (0, 0, 0))
+        draw = ImageDraw.Draw(ref)
+        try:
+            font = ImageFont.truetype("Arial.ttf", 120)
+        except OSError:
+            font = ImageFont.load_default()
+        draw.text((20, 5), "P", fill=(255, 255, 255), font=font)
+        ref.save(tmp_path / "prndl_p_active.png")
+
+        screen = Image.new("RGB", (400, 300), (0, 0, 0))
+        draw = ImageDraw.Draw(screen)
+        draw.ellipse((80, 40, 160, 160), outline=(255, 255, 255), width=8)
+
+        store = AssetStore([tmp_path])
+        absent = ImageAbsentVerifier(store, image_config)
+        exp = Expectation(
+            image="prndl_p_active.png",
+            region=Region(x=40, y=20, width=202, height=266),
+            threshold=0.90,
+            mask_background=True,
+        )
+        result = absent.verify(observe(screen), exp)
+        assert result.passed, result.message
+
     def test_template_larger_than_screen_errors(self, assets, image_config, artwork_a):
         verifier = ImagePresentVerifier(assets, image_config)
         from PIL import Image
 
-        tiny = Image.new("RGB", (50, 50))
+        # Smaller than the 16px minimum template — cannot downscale to fit.
+        tiny = Image.new("RGB", (10, 10))
         with pytest.raises(VerificationError, match="larger"):
             verifier.verify(observe(tiny), Expectation(image="movie_123.png"))
 
