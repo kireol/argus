@@ -18,9 +18,12 @@ class _FixedOCR(OCRProvider):
     def extract_text(self, image: Image.Image) -> OCRResult:  # noqa: ARG002
         return OCRResult(text=self._text)
 
+    def is_available(self) -> tuple[bool, str]:
+        return True, "fixed"
+
 
 def _observation() -> Observation:
-    return Observation(image=Image.new("RGB", (10, 10)), timestamp=0.0)
+    return Observation(image=Image.new("RGB", (10, 10)), device="test")
 
 
 def test_text_present_ignores_trailing_punctuation():
