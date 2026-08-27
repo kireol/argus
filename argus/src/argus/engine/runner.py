@@ -11,6 +11,7 @@ and publishes events on its bus throughout the run.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shlex
 import subprocess
@@ -26,6 +27,7 @@ from argus.config.models import AppConfig
 from argus.engine.context import TestContext
 from argus.engine.filters import TestFilter
 from argus.engine.loader import TestSuite, load_suite
+from argus.engine.metrics import MetricsSampler
 from argus.engine.session import RunSession
 from argus.events.bus import EventBus
 from argus.events.events import (
@@ -48,6 +50,7 @@ from argus.events.events import (
 )
 from argus.exceptions import ConfigurationError, TestDefinitionError, UTFError
 from argus.logging import get_logger
+from argus.models.metrics import merge_metrics_reports
 from argus.models.results import (
     AttemptRecord,
     RunResult,
@@ -278,6 +281,15 @@ class TestRunner:
 
             if run_result.tests and artifacts.has_run_dir:
                 run_result.results_dir = str(artifacts.run_dir)
+            collected = [t.metrics for t in run_result.tests if t.metrics is not None]
+            merged = merge_metrics_reports(collected)
+            if merged is not None:
+                run_result.metrics = merged
+                if artifacts.has_run_dir:
+                    artifacts.save_run_report(
+                        "metrics.json",
+                        json.dumps(merged.model_dump(mode="json"), indent=2),
+                    )
 
         run_result.duration = time.monotonic() - started
         if cancelled:
@@ -604,6 +616,12 @@ class TestRunner:
             status=TestStatus.PASSED,
         )
 
+        sampler: MetricsSampler | None = None
+        if self.config.metrics.enabled and device is not None:
+            sampler = MetricsSampler(
+                device, interval_seconds=self.config.metrics.interval_seconds
+            )
+            sampler.start()
         try:
             setup_steps = [*self._before_each_steps(), *test.setup]
             failed_step = self._run_steps(session, context, setup_steps, result, "setup")
@@ -614,6 +632,8 @@ class TestRunner:
             self._run_steps(
                 session, context, test.teardown, result, "teardown", record_failure=False
             )
+            if sampler is not None:
+                result.metrics = sampler.stop()
 
         result.duration = time.monotonic() - started
         return self._finish(test, platform, result, artifacts, test_artifacts, context)
@@ -733,6 +753,10 @@ class TestRunner:
                 )
             if not result.passed:
                 self._save_failure_diagnostics(context, result, test_artifacts)
+            if result.metrics is not None:
+                test_artifacts.save_json(
+                    "metrics.json", result.metrics.model_dump(mode="json")
+                )
         artifacts.finalize_test(test_artifacts, passed=result.passed)
         result.artifact_dir = (
             str(test_artifacts.directory) if test_artifacts.directory.exists() else None
@@ -754,9 +778,12 @@ class TestRunner:
         from argus.verifiers.image import diff_image
 
         assert isinstance(artifacts, TestArtifacts)
-        if not result.passed and not self.config.results.save_screenshots_on_failure:
-            if not all_steps:
-                return
+        if (
+            not result.passed
+            and not self.config.results.save_screenshots_on_failure
+            and not all_steps
+        ):
+            return
 
         try:
             observation = context.last_observation
@@ -766,6 +793,21 @@ class TestRunner:
                 except UTFError:
                     observation = None
 
+            def _images_from(ver: object) -> list[str]:
+                found: list[str] = []
+                if ver is None:
+                    return found
+                details = getattr(ver, "details", None)
+                if details is None and isinstance(ver, dict):
+                    details = ver.get("details") or ver
+                if not isinstance(details, dict):
+                    return found
+                if details.get("image"):
+                    found.append(str(details["image"]))
+                for child in details.get("children") or []:
+                    found.extend(_images_from(child))
+                return found
+
             image_steps = [
                 s
                 for s in result.steps
@@ -773,8 +815,23 @@ class TestRunner:
                 and s.verification.details.get("image")
             ]
             if not image_steps:
-                if observation is not None and not result.passed:
+                # wait_until all/any: the step verifier is the composite; image
+                # names live on children. Always keep the screenshot so a miss
+                # is diagnosable.
+                if observation is not None and (not result.passed or all_steps):
                     artifacts.save_image("actual.png", observation.image)
+                    artifacts.saved_comparisons = True
+                seen: set[str] = set()
+                for step in result.steps:
+                    for image_name in _images_from(step.verification):
+                        if image_name in seen:
+                            continue
+                        seen.add(image_name)
+                        if context.verifiers.assets.exists(image_name):
+                            artifacts.save_image(
+                                f"{Path(image_name).stem}_expected.png",
+                                context.verifiers.assets.load_array(image_name),
+                            )
                 return
 
             if all_steps:

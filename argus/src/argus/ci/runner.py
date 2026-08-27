@@ -615,6 +615,7 @@ class CIRunner:
             artifact_dir=test.artifact_dir,
             artifacts=artifacts,
             attempt_history=list(test.attempt_history),
+            metrics=test.metrics,
         )
 
     def _apply_policy(
