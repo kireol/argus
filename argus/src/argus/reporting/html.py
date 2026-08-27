@@ -8,6 +8,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from argus import __version__
+from argus.models.metrics import (
+    MetricsReport,
+    compact_metrics_summary,
+    format_metric_value,
+    label_for,
+    ordered_metric_names,
+)
 from argus.models.results import RunResult, TestResult, TestStatus
 from argus.utilities.duration import format_duration
 
@@ -122,6 +129,17 @@ a { color: var(--accent); }
 .notice { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;
           padding: .6rem .9rem; margin: .5rem 0; }
 .notice.bad { background: #fef2f2; border-color: #fecaca; }
+.metrics-cell {
+  font-size: .75rem; color: var(--muted); max-width: 18rem; white-space: normal;
+  line-height: 1.35;
+}
+.metrics { white-space: normal; margin: .65rem 0 .4rem; overflow-x: auto; }
+.metrics table { font-variant-numeric: tabular-nums; margin: 0; border-radius: 8px; }
+.metrics th, .metrics td { font-size: .78rem; }
+.metrics td.num {
+  text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.metrics summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 """
 
 _JS = """
@@ -231,11 +249,90 @@ def _steps_html(test: TestResult) -> str:
     return f'<ol class="steps">{"".join(items)}</ol>'
 
 
+def _metrics_cell(test: TestResult) -> str:
+    if test.metrics is None or test.metrics.empty:
+        return '<td class="metrics-cell muted">—</td>'
+    text = html.escape(compact_metrics_summary(test.metrics))
+    return f'<td class="metrics-cell">{text}</td>'
+
+
+def _metrics_summary_table(report: MetricsReport) -> str:
+    rows = [
+        "<tr>"
+        "<th>Metric</th><th>Min</th><th>Max</th><th>Average</th><th>Median</th>"
+        "</tr>"
+    ]
+    body: list[str] = []
+    for name, summary in report.metrics.items():
+        unit = summary.unit
+        label = html.escape(label_for(name))
+        if unit:
+            label = f"{label} <span class='muted'>({html.escape(unit)})</span>"
+        body.append(
+            "<tr>"
+            f"<td>{label}</td>"
+            f"<td class='num'>{html.escape(format_metric_value(summary.min, unit))}</td>"
+            f"<td class='num'>{html.escape(format_metric_value(summary.max, unit))}</td>"
+            f"<td class='num'>{html.escape(format_metric_value(summary.average, unit))}</td>"
+            f"<td class='num'>{html.escape(format_metric_value(summary.median, unit))}</td>"
+            "</tr>"
+        )
+    return (
+        '<div class="metrics"><table><thead>'
+        + "".join(rows)
+        + "</thead><tbody>"
+        + "".join(body)
+        + "</tbody></table></div>"
+    )
+
+
+def _metrics_samples_table(report: MetricsReport) -> str:
+    if not report.samples:
+        return ""
+    names = ordered_metric_names({key for tick in report.samples for key in tick.values})
+    if not names:
+        return ""
+    header = "".join(
+        f"<th>{html.escape(label_for(name))}</th>" for name in names
+    )
+    body: list[str] = []
+    for tick in report.samples:
+        cells = [f"<td class='num'>{tick.t:.1f}s</td>"]
+        for name in names:
+            if name not in tick.values:
+                cells.append("<td class='num muted'>—</td>")
+                continue
+            unit = report.metrics[name].unit if name in report.metrics else ""
+            cells.append(
+                f"<td class='num'>{html.escape(format_metric_value(tick.values[name], unit))}</td>"
+            )
+        body.append(f"<tr>{''.join(cells)}</tr>")
+    return (
+        '<details class="metrics" open>'
+        f"<summary>Samples during this test ({len(report.samples)})</summary>"
+        "<table><thead><tr><th>t</th>"
+        + header
+        + "</tr></thead><tbody>"
+        + "".join(body)
+        + "</tbody></table></details>"
+    )
+
+
+def _metrics_html(report: MetricsReport | None, *, include_samples: bool) -> str:
+    if report is None or report.empty:
+        return ""
+    parts = [_metrics_summary_table(report)]
+    if include_samples:
+        parts.append(_metrics_samples_table(report))
+    return "".join(parts)
+
+
 def _detail_row(test: TestResult, report_dir: Path) -> str | None:
     needs_detail = (
         test.status in (TestStatus.FAILED, TestStatus.ERROR)
         or bool(test.artifact_dir and _discover_images(Path(test.artifact_dir)))
         or bool(test.steps)
+        or bool(test.metrics and not test.metrics.empty)
     )
     if not needs_detail:
         return None
@@ -247,6 +344,9 @@ def _detail_row(test: TestResult, report_dir: Path) -> str | None:
         parts.append(
             f'<p class="muted">category: {html.escape(test.failure_category)}</p>'
         )
+    metrics = _metrics_html(test.metrics, include_samples=True)
+    if metrics:
+        parts.append(metrics)
     steps = _steps_html(test)
     if steps:
         parts.append(steps)
@@ -275,7 +375,7 @@ def _detail_row(test: TestResult, report_dir: Path) -> str | None:
         return None
     return (
         f'<tr class="detail">'
-        f'<td></td><td colspan="5">{"".join(parts)}</td></tr>'
+        f'<td></td><td colspan="6">{"".join(parts)}</td></tr>'
     )
 
 
@@ -306,7 +406,8 @@ def _test_rows(tests: list[TestResult], report_dir: Path, badges: Badges | None 
             f"<td>{html.escape(test.name)}</td>"
             f"<td>{platform}</td>"
             f"<td>{format_duration(test.duration)}</td>"
-            f"<td>{test.attempts}</td></tr>"
+            f"<td>{test.attempts}</td>"
+            f"{_metrics_cell(test)}</tr>"
         )
         detail = _detail_row(test, report_dir)
         if detail:
@@ -337,7 +438,7 @@ def _grouped_sections(
             f'<span class="muted">({len(tests)} tests · {meta})</span></h2>'
             f"<table><thead><tr>"
             f"<th>Status</th><th>ID</th><th>Name</th>"
-            f"<th>Platform</th><th>Duration</th><th>Attempts</th>"
+            f"<th>Platform</th><th>Duration</th><th>Attempts</th><th>Metrics</th>"
             f"</tr></thead><tbody>"
             f"{_test_rows(tests, report_dir, badges)}"
             f"</tbody></table></section>"
@@ -398,6 +499,7 @@ def write_html_report(
 </div>
 <p><strong>Result:</strong> {html.escape(status_label)}</p>
 {f'<p class="error">{html.escape(result.stop_reason)}</p>' if result.stop_reason else ""}
+{_metrics_html(result.metrics, include_samples=False)}
 {_notices_html(notices)}
 <div class="filters">
   <button type="button" class="active" data-filter="all">All</button>

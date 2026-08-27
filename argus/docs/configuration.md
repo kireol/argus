@@ -7,7 +7,10 @@ Configuration is layered; later layers override earlier ones:
 3. Your user configuration (`argus init` creates it; path is platform-specific)
 4. An explicit `--config file.yaml`
 
-Values merge deeply, so a layer only needs the keys it changes.
+Values merge deeply, so a layer only needs the keys it changes. Exception:
+when `--config` defines `devices:`, only those device **names** are kept.
+Fields on a matching name still deep-merge (so a user file can set `serial`),
+but leftover template devices from `argus init` do not join the run.
 
 ## Secrets & environment variables
 
@@ -60,6 +63,7 @@ verification:
     default_threshold: 0.90  # 0..1; per-condition `threshold:` overrides
     grayscale: false
     scale_tolerance: 0.0     # e.g. 0.1 tries 90%/100%/110% template sizes
+                             # (oversized goldens are auto-shrunk to fit)
     match_method: ccoeff_normed  # ccorr_normed | sqdiff_normed
 
 ocr:
@@ -80,6 +84,11 @@ wait:
   default_timeout: 10s       # wait_until defaults
   default_poll_interval: 500ms
   # reuse_wait_result_on_verify: true  # skip duplicate verify after matching wait_until
+
+metrics:
+  enabled: true              # sample FPS, jank, memory, load, uptime during each test
+  interval: 1s               # cheaper than dumpsys meminfo; keep ≥ 0.2s
+                             # Android FPS = display refresh; App FPS = unique frames
 
 results:
   dir: results

@@ -18,6 +18,8 @@ def test_defaults_without_files(tmp_path):
     config = load_config(root_dir=tmp_path, env={})
     assert config.verification.image.default_threshold == 0.90
     assert config.results.dir == "results"
+    assert config.metrics.enabled is True
+    assert config.metrics.interval_seconds == 1.0
 
 
 def test_explicit_config(tmp_path):
@@ -95,6 +97,77 @@ def test_device_platform_defaults_to_type(tmp_path):
     assert set(config.devices_for_platform("android")) == {"b"}
 
 
+def test_devices_for_platform_skips_unconfigured(tmp_path):
+    path = write_config(
+        tmp_path,
+        "devices:\n"
+        "  ready:\n    type: fake\n    platform: android\n"
+        "  pending:\n    type: android\n    serial: ${ANDROID_SERIAL}\n",
+    )
+    config = load_config(path, root_dir=tmp_path, env={})
+    assert set(config.devices_for_platform("android")) == {"ready"}
+    assert not config.devices["pending"].configured
+
+
+def test_explicit_config_drops_user_devices_not_named(tmp_path, monkeypatch):
+    user = tmp_path / "user.yaml"
+    user.write_text(
+        "devices:\n"
+        "  android:\n    type: android\n    serial: emulator-5556\n"
+        "  living_room:\n    type: fake\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "argus.config.loader.default_user_config_path", lambda: user
+    )
+    explicit = write_config(
+        tmp_path,
+        "devices:\n  fallback:\n    type: desktop\n    command: ./app\n    platform: cpp\n",
+    )
+    config = load_config(explicit, root_dir=tmp_path, env={})
+    assert set(config.devices) == {"fallback"}
+
+
+def test_explicit_config_still_merges_fields_on_named_devices(tmp_path, monkeypatch):
+    user = tmp_path / "user.yaml"
+    user.write_text(
+        "devices:\n  android:\n    type: android\n    serial: from-user\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "argus.config.loader.default_user_config_path", lambda: user
+    )
+    explicit = write_config(
+        tmp_path,
+        "devices:\n  android:\n    type: android\n    app_package: com.example\n",
+    )
+    config = load_config(explicit, root_dir=tmp_path, env={})
+    assert set(config.devices) == {"android"}
+    assert config.devices["android"].options["serial"] == "from-user"
+    assert config.devices["android"].options["app_package"] == "com.example"
+
+
+def test_explicit_extends_device_set_drops_user_extras(tmp_path, monkeypatch):
+    user = tmp_path / "user.yaml"
+    user.write_text(
+        "devices:\n  android:\n    type: android\n    serial: emulator-1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "argus.config.loader.default_user_config_path", lambda: user
+    )
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "base.yaml").write_text(
+        "devices:\n  fallback:\n    type: desktop\n    command: ./app\n    platform: cpp\n",
+        encoding="utf-8",
+    )
+    overlay = cfg_dir / "overlay.yaml"
+    overlay.write_text("extends: base.yaml\nlogging:\n  level: INFO\n", encoding="utf-8")
+    config = load_config(overlay, root_dir=tmp_path, env={})
+    assert set(config.devices) == {"fallback"}
+
+
 def test_resolve_path_relative_to_root(tmp_path):
     config = load_config(root_dir=tmp_path, env={})
     assert config.resolve_path("assets/images") == tmp_path / "assets/images"
@@ -146,3 +219,10 @@ def test_extends_missing_base_errors(tmp_path):
     path = write_config(tmp_path, "extends: missing.yaml\nlogging:\n  level: INFO\n")
     with pytest.raises(ConfigurationError, match="not found"):
         load_config(path, root_dir=tmp_path, env={})
+
+
+def test_metrics_interval(tmp_path):
+    path = write_config(tmp_path, "metrics:\n  interval: 500ms\n  enabled: true\n")
+    config = load_config(path, root_dir=tmp_path, env={})
+    assert config.metrics.enabled is True
+    assert config.metrics.interval_seconds == 0.5

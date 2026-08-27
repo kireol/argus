@@ -1,7 +1,7 @@
 """Console reporter progress counters."""
 
-from io import StringIO
 import logging
+from io import StringIO
 
 from rich.console import Console
 
@@ -29,7 +29,9 @@ def _result(
 
 def _reporter(*, log_level: int = logging.WARNING) -> tuple[ConsoleReporter, StringIO]:
     buffer = StringIO()
-    console = Console(file=buffer, force_terminal=True, width=120, highlight=False)
+    console = Console(
+        file=buffer, force_terminal=True, color_system=None, width=120, highlight=False
+    )
     logging.getLogger("argus").setLevel(log_level)
     return ConsoleReporter(console), buffer
 
@@ -145,7 +147,9 @@ class TestConsoleProgressCounters:
 
     def test_quiet_still_advances_index_for_printed_failures(self):
         buffer = StringIO()
-        console = Console(file=buffer, force_terminal=True, width=120, highlight=False)
+        console = Console(
+        file=buffer, force_terminal=True, color_system=None, width=120, highlight=False
+    )
         logging.getLogger("argus").setLevel(logging.ERROR)
         reporter = ConsoleReporter(console, quiet=True)
         bus = EventBus()
@@ -193,3 +197,59 @@ class TestFeatureLifecycleLines:
         assert "✓ setup (android)" in text
         assert "✗ teardown (android)" in text
         assert "backend.set — boom" in text
+
+
+def _metrics_result() -> TestResult:
+    from argus.models.metrics import build_report
+
+    report = build_report({"fps": [30.0, 60.0, 60.0]}, interval_seconds=1.0)
+    return TestResult(
+        test_id="T-1",
+        name="only",
+        feature="Prndl",
+        status=TestStatus.PASSED,
+        metrics=report,
+    )
+
+
+class TestMetricsConsoleOutput:
+    def test_metrics_print_under_each_test_by_default(self):
+        reporter, buffer = _reporter()
+        bus = EventBus()
+        reporter.attach(bus)
+        bus.publish(TestRunStarted(total_tests=1))
+        bus.publish(TestStarted(test_id="T-1", name="only", feature="Prndl"))
+        bus.publish(TestPassed(result=_metrics_result()))
+        text = buffer.getvalue()
+        assert "FPS" in text
+        assert "average=" in text
+        assert "median=" in text
+
+    def test_no_logs_hides_metrics_keeps_progress(self):
+        from argus.events.events import TestRunCompleted
+        from argus.models.results import RunResult, RunStatus
+
+        reporter, buffer = _reporter()
+        reporter.no_logs = True
+        bus = EventBus()
+        reporter.attach(bus)
+        result = _metrics_result()
+        bus.publish(TestRunStarted(total_tests=1))
+        bus.publish(TestStarted(test_id="T-1", name="only", feature="Prndl"))
+        bus.publish(TestPassed(result=result))
+        bus.publish(
+            TestRunCompleted(
+                result=RunResult(
+                    status=RunStatus.PASSED,
+                    tests=[result],
+                    metrics=result.metrics,
+                )
+            )
+        )
+        text = buffer.getvalue()
+        assert "✓ 1/1 - T-1" in text
+        assert "TEST RUN PASSED" in text
+        assert "FPS" not in text
+        assert "average=" not in text
+        assert "median=" not in text
+

@@ -6,6 +6,7 @@ Talks to emulators or physical devices through the ``adb`` binary using
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import re
@@ -20,6 +21,12 @@ from PIL import Image as PILImage
 from PIL.Image import Image
 
 from argus.adapters.base import Device, DeviceCapabilities, Point, interpolate_path
+from argus.adapters.runtime_metrics import (
+    ProcMetricsState,
+    linux_snapshot_script,
+    parse_linux_metrics,
+    safe_identifier,
+)
 from argus.config.models import DeviceConfig
 from argus.exceptions import (
     ConfigurationError,
@@ -103,6 +110,7 @@ class AndroidAdapter(Device):
         self._screen_info: ScreenInfo | None = None
         self._sdk: int | None = None
         self._touchscreen: _Touchscreen | None = None
+        self._metrics_state = ProcMetricsState()
         self._log = get_logger("argus.android", device=name)
 
     @classmethod
@@ -326,6 +334,31 @@ class AndroidAdapter(Device):
 
     def get_logs(self, lines: int = 200) -> str:
         return self._adb("logcat", "-d", "-t", str(lines)).decode(errors="replace")
+
+    def begin_metrics_session(self) -> None:
+        self._metrics_state = ProcMetricsState()
+        pkg = safe_identifier(self._app_package)
+        if pkg is None:
+            return
+        with contextlib.suppress(DeviceConnectionError):
+            self._shell("dumpsys", "gfxinfo", pkg, "reset")
+
+    def sample_metrics(self) -> dict[str, float]:
+        try:
+            blob = self._shell(
+                "sh",
+                "-c",
+                linux_snapshot_script(
+                    package=self._app_package,
+                    gfxinfo=self._app_package is not None,
+                ),
+            )
+        except DeviceConnectionError:
+            return {}
+        try:
+            return parse_linux_metrics(blob, self._metrics_state)
+        except (TypeError, ValueError):
+            return {}
 
     # -- input ---------------------------------------------------------------------------------
 

@@ -62,7 +62,10 @@ Only matters for tests using `text_present`/`text_not_present`. Install
 **Image not found but it *is* on screen**
 Open the failure's `actual.png` and compare with `expected.png`:
 - Resolution/scale differs from where the reference was captured →
-  recapture on this device or set `scale_tolerance: 0.1`.
+  recapture on this device, or set `scale_tolerance: 0.1` if the
+  on-screen icon is smaller/larger than the (already auto-fitted)
+  reference. A reference larger than the search region is shrunk
+  automatically; that is not a failure by itself.
 - The confidence in the message tells you how close it was; `0.85` against
   a `0.90` threshold usually means a slightly-off reference, `0.3` means
   it's genuinely not there.

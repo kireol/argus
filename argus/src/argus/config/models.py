@@ -143,6 +143,19 @@ class OCRConfig(BaseModel):
     isolate_light_text_luminance: int = Field(default=180, ge=0, le=255)
 
 
+class MetricsConfig(BaseModel):
+    """Background sampling of FPS, jank, memory, and load during each test."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    interval: str | float = "1s"
+
+    @property
+    def interval_seconds(self) -> float:
+        return parse_duration(self.interval)
+
+
 class ResultsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -508,6 +521,7 @@ class AppConfig(BaseModel):
     results: ResultsConfig = Field(default_factory=ResultsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wait: WaitConfig = Field(default_factory=WaitConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     preflight: PreflightConfig = Field(default_factory=PreflightConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     ci: CIConfig = Field(default_factory=CIConfig)
@@ -535,5 +549,5 @@ class AppConfig(BaseModel):
         return {
             name: dev
             for name, dev in self.devices.items()
-            if dev.effective_platform == platform
+            if dev.effective_platform == platform and dev.configured
         }

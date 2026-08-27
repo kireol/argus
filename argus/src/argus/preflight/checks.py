@@ -87,12 +87,16 @@ class TestAssetsCheck(PreflightCheck):
 
     def run(self) -> PreflightResult:
         missing: dict[str, list[str]] = {}
+        checked = 0
         for test in self._tests:
+            if not _scheduled_on_configured_devices(self._session, test):
+                continue
+            checked += 1
             for image in referenced_images(test):
                 if not self._session.assets.exists(image):
                     missing.setdefault(image, []).append(test.id)
         if not missing:
-            return self._result(True, checked_tests=len(self._tests))
+            return self._result(True, checked_tests=checked)
         detail = "; ".join(
             f"{image} (used by {', '.join(ids)})" for image, ids in missing.items()
         )
@@ -103,6 +107,7 @@ class TestAssetsCheck(PreflightCheck):
             remediation=f"Add the missing files under one of: {paths}",
             causes=["Image asset not committed", "Wrong filename in test definition"],
             missing=sorted(missing),
+            checked_tests=checked,
         )
 
 
@@ -305,6 +310,18 @@ class OCRCheck(PreflightCheck):
 
 
 # -- helpers -------------------------------------------------------------------------
+
+
+def _scheduled_on_configured_devices(session: RunSession, test: TestDefinition) -> bool:
+    """True when this test would actually execute given the configured devices.
+
+    ``argus run --all`` still *loads* android-only suites under a cpp config;
+    those tests are skipped at execution time and must not fail preflight for
+    resolution-specific crops that live only in the Android asset folders.
+    """
+    if not test.platforms:
+        return True
+    return any(session.devices_for_platform(platform) for platform in test.platforms)
 
 
 def _condition_specs(spec_source: dict[str, Any]) -> list[ConditionSpec]:
