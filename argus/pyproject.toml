@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "argus"
-version = "1.2.5"
+version = "1.2.6"
 description = "Argus — Universal Cross-Platform Application Functional & Visual Testing Framework"
 readme = "README.md"
 license = "MIT"
