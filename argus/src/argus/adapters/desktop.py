@@ -9,19 +9,24 @@ pixels; the adapter converts them to logical (HiDPI-scaled) coordinates.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from PIL.Image import Image
+from PIL import Image as PILImage
+from PIL.Image import Image, Resampling
 
 from argus.adapters.base import Device, DeviceCapabilities, Point
+from argus.adapters.runtime_metrics import parse_ps_etime
 from argus.config.models import DeviceConfig
 from argus.exceptions import (
     ConfigurationError,
@@ -88,6 +93,48 @@ def _chord(key: str) -> list[str] | None:
     if len(parts) < 2:
         return None
     return [_MODIFIERS.get(p.lower(), _map_key(p)) for p in parts]
+
+
+def _host_uptime_seconds() -> float | None:
+    try:
+        return float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, IndexError, ValueError):
+        pass
+    if sys.platform == "darwin":
+        try:
+            raw = subprocess.run(
+                ["sysctl", "-n", "kern.boottime"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        marker = "sec ="
+        index = raw.find(marker)
+        if index < 0:
+            marker = "sec="
+            index = raw.find(marker)
+        if index < 0:
+            return None
+        digits: list[str] = []
+        for char in raw[index + len(marker) :]:
+            if char.isdigit():
+                digits.append(char)
+            elif digits:
+                break
+        if not digits:
+            return None
+        return max(0.0, time.time() - int("".join(digits)))
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            return float(ctypes.windll.kernel32.GetTickCount64()) / 1000.0
+        except (AttributeError, OSError, ValueError):
+            return None
+    return None
 
 
 class DesktopBackend(Protocol):
@@ -237,6 +284,265 @@ def _validate_region(name: str, region: tuple[int, int, int, int] | None) -> Non
         )
 
 
+_DEFAULT_TITLE_BAR_PT = 28
+
+
+@dataclass(frozen=True)
+class _MacWindow:
+    """On-screen window in logical points (top-left origin)."""
+
+    bounds: tuple[int, int, int, int]
+    window_id: int | None = None
+    owner_pid: int | None = None
+
+
+def _osa_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _osascript_window_bounds_script(title: str, process_name: str | None = None) -> str:
+    """AppleScript that returns ``x,y,w,h`` for a titled window.
+
+    Line continuation must not use a backslash — osascript treats ``\\`` as an
+    unknown token and the lookup then fails silently.
+    """
+    escaped_title = _osa_escape(title)
+    result = (
+        '(item 1 of pos as text) & "," & (item 2 of pos as text) & "," & '
+        '(item 1 of sz as text) & "," & (item 2 of sz as text)'
+    )
+    if process_name:
+        escaped_proc = _osa_escape(process_name)
+        return f'''
+tell application "System Events"
+  if not (exists process "{escaped_proc}") then return ""
+  tell process "{escaped_proc}"
+    repeat with w in windows
+      if name of w is "{escaped_title}" then
+        set pos to position of w
+        set sz to size of w
+        return {result}
+      end if
+    end repeat
+  end tell
+end tell
+'''
+    return f'''
+tell application "System Events"
+  repeat with p in processes
+    try
+      repeat with w in windows of p
+        if name of w is "{escaped_title}" then
+          set pos to position of w
+          set sz to size of w
+          return {result}
+        end if
+      end repeat
+    end try
+  end repeat
+end tell
+'''
+
+
+def _parse_bounds_csv(line: str) -> tuple[int, int, int, int] | None:
+    parts = [p.strip() for p in line.split(",")]
+    if len(parts) != 4:
+        return None
+    try:
+        x, y, width, height = (int(float(p)) for p in parts)
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return (x, y, width, height)
+
+
+def _quartz_window_info(title: str, process_name: str | None = None) -> _MacWindow | None:
+    """Locate a window via CGWindowList (Screen Recording; any display)."""
+    try:
+        from Quartz import (  # type: ignore[import-untyped]
+            CGWindowListCopyWindowInfo,
+            kCGNullWindowID,
+            kCGWindowListOptionOnScreenOnly,
+        )
+    except ImportError:
+        return None
+    info = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID) or []
+    for window in info:
+        name = window.get("kCGWindowName") or ""
+        if name != title:
+            continue
+        owner = window.get("kCGWindowOwnerName") or ""
+        if process_name and owner != process_name:
+            continue
+        raw = window.get("kCGWindowBounds") or {}
+        try:
+            x, y = int(raw["X"]), int(raw["Y"])
+            width, height = int(raw["Width"]), int(raw["Height"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if width < 50 or height < 50:
+            continue
+        window_id = window.get("kCGWindowNumber")
+        try:
+            parsed_id = int(window_id) if window_id is not None else None
+        except (TypeError, ValueError):
+            parsed_id = None
+        owner_pid = window.get("kCGWindowOwnerPID")
+        try:
+            parsed_pid = int(owner_pid) if owner_pid is not None else None
+        except (TypeError, ValueError):
+            parsed_pid = None
+        return _MacWindow(
+            bounds=(x, y, width, height), window_id=parsed_id, owner_pid=parsed_pid
+        )
+    return None
+
+
+def _osascript_window_bounds(
+    title: str, process_name: str | None = None
+) -> tuple[int, int, int, int] | None:
+    """System Events lookup (Accessibility permission)."""
+    script = _osascript_window_bounds_script(title, process_name)
+    try:
+        completed = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    line = (completed.stdout or "").strip()
+    if not line or completed.returncode != 0:
+        return None
+    return _parse_bounds_csv(line)
+
+
+def _macos_window_info(title: str, process_name: str | None = None) -> _MacWindow | None:
+    """Locate ``title`` on any display. Quartz first, then System Events."""
+    if sys.platform != "darwin":
+        return None
+    found = _quartz_window_info(title, process_name)
+    if found is not None:
+        return found
+    bounds = _osascript_window_bounds(title, process_name)
+    if bounds is None and process_name is not None:
+        bounds = _osascript_window_bounds(title, None)
+    if bounds is None:
+        return None
+    return _MacWindow(bounds=bounds)
+
+
+def _macos_window_bounds(
+    title: str, process_name: str | None = None
+) -> tuple[int, int, int, int] | None:
+    """Logical-point (x, y, w, h) of an on-screen window, or None if not found."""
+    found = _macos_window_info(title, process_name)
+    return None if found is None else found.bounds
+
+
+def _macos_capture_window(window: _MacWindow) -> Image:
+    """Capture one window, including when it sits on a secondary display."""
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        if window.window_id is not None:
+            argv = ["screencapture", "-x", "-o", "-l", str(window.window_id), path]
+        else:
+            x, y, width, height = window.bounds
+            argv = ["screencapture", "-x", f"-R{x},{y},{width},{height}", path]
+        try:
+            completed = subprocess.run(argv, capture_output=True, timeout=15, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ScreenshotError(
+                f"Desktop screenshot failed: {exc}", remediation=_display_remediation()
+            ) from exc
+        if completed.returncode != 0 or not os.path.getsize(path):
+            detail = (completed.stderr or completed.stdout or b"").decode(errors="replace").strip()
+            raise ScreenshotError(
+                f"Desktop screenshot failed: {detail or 'screencapture returned empty image'}",
+                remediation=_display_remediation(),
+            )
+        with PILImage.open(path) as captured:
+            return captured.convert("RGB")
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+
+
+def _finish_window_image(
+    image: Image,
+    *,
+    logical_window: tuple[int, int],
+    title_bar_pt: int,
+    content_size: tuple[int, int] | None,
+) -> Image:
+    """Drop the title bar from a window-sized capture, optionally resize."""
+    logical_w, _logical_h = logical_window
+    scale = image.width / logical_w if logical_w > 0 else 1.0
+    title_px = int(round(max(0, title_bar_pt) * scale))
+    if 0 < title_px < image.height:
+        image = image.crop((0, title_px, image.width, image.height))
+    if content_size is not None and image.size != content_size:
+        image = image.resize(content_size, Resampling.LANCZOS)
+    return image.convert("RGB")
+
+
+def _extract_window(
+    image: Image,
+    *,
+    logical_size: tuple[int, int],
+    bounds: tuple[int, int, int, int],
+    title_bar_pt: int,
+    content_size: tuple[int, int] | None,
+) -> Image:
+    """Crop ``image`` to a window, drop the title bar, optionally resize."""
+    logical_w, _logical_h = logical_size
+    scale = image.width / logical_w if logical_w > 0 else 1.0
+    x, y, width, height = bounds
+    left = max(0, int(round(x * scale)))
+    top = max(0, int(round(y * scale)))
+    right = min(image.width, int(round((x + width) * scale)))
+    bottom = min(image.height, int(round((y + height) * scale)))
+    if right <= left or bottom <= top:
+        raise ScreenshotError(
+            f"Window bounds {bounds} do not intersect the "
+            f"{image.width}x{image.height} screenshot.",
+            remediation="The window is off the captured display; Argus captures it "
+            "directly on macOS. On other platforms, put the window on the primary display.",
+        )
+    crop = image.crop((left, top, right, bottom))
+    return _finish_window_image(
+        crop,
+        logical_window=(width, height),
+        title_bar_pt=title_bar_pt,
+        content_size=content_size,
+    )
+
+
+def _parse_wh(name: str, field: str, raw: Any) -> tuple[int, int]:
+    if not isinstance(raw, list | tuple) or len(raw) != 2:
+        raise ConfigurationError(
+            f"Desktop device {name!r}: {field} must be [width, height].",
+            remediation="Example: content_size: [1183, 624]",
+        )
+    try:
+        width, height = int(raw[0]), int(raw[1])
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError(
+            f"Desktop device {name!r}: {field} must be two integers [width, height].",
+            remediation="Example: content_size: [1183, 624]",
+        ) from exc
+    if width <= 0 or height <= 0:
+        raise ConfigurationError(
+            f"Desktop device {name!r}: {field} width and height must be positive.",
+            remediation="Example: content_size: [1183, 624]",
+        )
+    return (width, height)
+
+
 class DesktopAdapter(Device):
     """Controls a native desktop application through pyautogui and a subprocess."""
 
@@ -254,6 +560,9 @@ class DesktopAdapter(Device):
         region: tuple[int, int, int, int] | None = None,
         platform: str | None = None,
         backend_factory: BackendFactory | None = None,
+        window_title: str | None = None,
+        content_size: tuple[int, int] | None = None,
+        title_bar_height: int = _DEFAULT_TITLE_BAR_PT,
     ) -> None:
         super().__init__(name)
         self._command = command
@@ -265,6 +574,9 @@ class DesktopAdapter(Device):
         self._reset_command = reset_command
         self._region = region
         _validate_region(name, region)
+        self._window_title = window_title.strip() if window_title else None
+        self._content_size = content_size
+        self._title_bar_height = int(title_bar_height)
         self._platform = platform or _host_platform()
         self._backend_factory: BackendFactory = backend_factory or _pyautogui_backend
         self._backend: DesktopBackend | None = None
@@ -272,7 +584,18 @@ class DesktopAdapter(Device):
         self._logs: deque[str] = deque(maxlen=_MAX_LOG_LINES)
         self._ratio: float | None = None
         self._screen_info: ScreenInfo | None = None
+        self._window: _MacWindow | None = None
         self._log = get_logger("argus.desktop", device=name)
+
+    def _process_name(self) -> str:
+        return Path(self._command).name
+
+    def _lookup_window(self) -> _MacWindow | None:
+        if not self._window_title:
+            return None
+        found = _macos_window_info(self._window_title, process_name=self._process_name())
+        self._window = found
+        return found
 
     @classmethod
     def from_config(cls, name: str, config: DeviceConfig) -> DesktopAdapter:
@@ -305,6 +628,20 @@ class DesktopAdapter(Device):
                     remediation="Example: region: [0, 0, 1920, 1080]",
                 ) from exc
         env = options.get("env")
+        raw_title = options.get("window_title")
+        window_title = str(raw_title).strip() if raw_title else None
+        content_size = None
+        if options.get("content_size") is not None:
+            content_size = _parse_wh(name, "content_size", options.get("content_size"))
+        title_bar_height = _DEFAULT_TITLE_BAR_PT
+        if options.get("title_bar_height") is not None:
+            try:
+                title_bar_height = int(options["title_bar_height"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigurationError(
+                    f"Desktop device {name!r}: title_bar_height must be an integer.",
+                    remediation="Example: title_bar_height: 28",
+                ) from exc
         return cls(
             name,
             command=str(command),
@@ -316,6 +653,9 @@ class DesktopAdapter(Device):
             reset_command=options.get("reset_command"),
             region=region,
             platform=config.effective_platform if config.platform else None,
+            window_title=window_title,
+            content_size=content_size,
+            title_bar_height=title_bar_height,
         )
 
     @property
@@ -390,6 +730,7 @@ class DesktopAdapter(Device):
                 )
             logical_width, _logical_height = size
             self._ratio = image.width / logical_width if logical_width > 0 else 1.0
+        self._ensure_window()
 
     def disconnect(self) -> None:
         if self._process is not None and self._process.running:
@@ -418,10 +759,37 @@ class DesktopAdapter(Device):
     # -- application lifecycle ----------------------------------------------------------
 
     def is_application_running(self) -> bool:
-        return self._process is not None and self._process.running
+        if self._process is not None and self._process.running:
+            return True
+        return bool(self._window_title and self._lookup_window() is not None)
+
+    def _ensure_window(self) -> None:
+        """Launch the app when ``window_title`` is set and that window is missing."""
+        if not self._window_title:
+            return
+        if self._lookup_window() is not None:
+            return
+        self.start_application()
+        deadline = time.monotonic() + max(self._startup_wait, 15.0)
+        while time.monotonic() < deadline:
+            if self._lookup_window() is not None:
+                return
+            time.sleep(0.2)
+        raise DeviceConnectionError(
+            f"Desktop device {self.name!r}: window {self._window_title!r} did not appear.",
+            remediation="Start the app, or check devices.<name>.command and "
+            "window_title. Grant Screen Recording permission so Argus can see "
+            "the window (Accessibility is also used as a fallback).",
+        )
 
     def start_application(self) -> None:
         self._require_backend()
+        if self._window_title and self._lookup_window() is not None:
+            self._log.info(
+                "Window %r already present; not launching a second instance",
+                self._window_title,
+            )
+            return
         if self._process is not None and self._process.running:
             self.stop_application()
         env = {**os.environ, **self._env} if self._env else None
@@ -485,6 +853,30 @@ class DesktopAdapter(Device):
 
     def screenshot(self) -> Image:
         image = self._grab()
+        if self._window_title:
+            found = self._lookup_window()
+            if found is None:
+                raise ScreenshotError(
+                    f"Desktop device {self.name!r}: window {self._window_title!r} "
+                    "not found.",
+                    remediation="Start the app and grant Screen Recording (and "
+                    "Accessibility) to the terminal running Argus.",
+                )
+            if sys.platform == "darwin":
+                image = _finish_window_image(
+                    _macos_capture_window(found),
+                    logical_window=(found.bounds[2], found.bounds[3]),
+                    title_bar_pt=self._title_bar_height,
+                    content_size=self._content_size,
+                )
+            else:
+                image = _extract_window(
+                    image,
+                    logical_size=self._require_backend().size(),
+                    bounds=found.bounds,
+                    title_bar_pt=self._title_bar_height,
+                    content_size=self._content_size,
+                )
         if self._region is None:
             return image
         x, y, width, height = self._region
@@ -512,14 +904,82 @@ class DesktopAdapter(Device):
 
     def _to_logical(self, point: Point) -> tuple[float, float]:
         """Screenshot pixel (inside ``region`` if set) -> pyautogui logical coordinate."""
+        x, y = float(point[0]), float(point[1])
+        if self._region is not None:
+            x += self._region[0]
+            y += self._region[1]
+        if self._window_title and self._window is not None:
+            win_x, win_y, win_w, win_h = self._window.bounds
+            title = max(0, self._title_bar_height)
+            content_w = max(1, win_w)
+            content_h = max(1, win_h - title)
+            if self._content_size is not None:
+                img_w, img_h = self._content_size
+            else:
+                ratio = self._pixel_ratio()
+                img_w, img_h = content_w * ratio, content_h * ratio
+            return (
+                win_x + x * content_w / img_w,
+                win_y + title + y * content_h / img_h,
+            )
         ratio = self._pixel_ratio()
-        offset_x, offset_y = (self._region[0], self._region[1]) if self._region else (0, 0)
-        return ((point[0] + offset_x) / ratio, (point[1] + offset_y) / ratio)
+        return (x / ratio, y / ratio)
 
     def get_logs(self, lines: int = 200) -> str:
         if lines <= 0:
             return ""
         return "\n".join(list(self._logs)[-lines:])
+
+    def _app_pid(self) -> int | None:
+        if self._process is not None and self._process.running:
+            return self._process.pid
+        window = self._window
+        if window is not None and window.owner_pid:
+            return window.owner_pid
+        return None
+
+    def sample_metrics(self) -> dict[str, float]:
+        sample: dict[str, float] = {}
+        try:
+            load1, load5, load15 = os.getloadavg()
+            sample["system_load_1m"] = float(load1)
+            sample["system_load_5m"] = float(load5)
+            sample["system_load_15m"] = float(load15)
+        except (AttributeError, OSError):
+            pass
+        uptime = _host_uptime_seconds()
+        if uptime is not None:
+            sample["system_uptime_s"] = uptime
+        pid = self._app_pid()
+        if pid is None:
+            return sample
+        try:
+            completed = subprocess.run(
+                ["ps", "-o", "etime=,rss=,pcpu=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return sample
+        parts = completed.stdout.strip().split()
+        if len(parts) >= 3:
+            elapsed = parse_ps_etime(parts[0])
+            if elapsed is not None:
+                sample["app_uptime_s"] = elapsed
+            try:
+                sample["app_rss_mb"] = float(parts[1]) / 1024.0
+                sample["app_cpu_percent"] = float(parts[2])
+            except ValueError:
+                pass
+        elif len(parts) >= 2:
+            try:
+                sample["app_rss_mb"] = float(parts[0]) / 1024.0
+                sample["app_cpu_percent"] = float(parts[1])
+            except ValueError:
+                pass
+        return sample
 
     # -- input --------------------------------------------------------------------------------
 

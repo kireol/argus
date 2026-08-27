@@ -27,6 +27,7 @@ from argus.events.events import (
     TestSkipped,
     TestStarted,
 )
+from argus.models.metrics import format_metrics_lines
 from argus.models.results import RunStatus, TestResult
 from argus.utilities.duration import format_duration
 
@@ -36,9 +37,12 @@ _RULE = "─" * 40
 class ConsoleReporter:
     """Subscribes to the event bus and renders progress for humans."""
 
-    def __init__(self, console: Console | None = None, *, quiet: bool = False) -> None:
+    def __init__(
+        self, console: Console | None = None, *, quiet: bool = False, no_logs: bool = False
+    ) -> None:
         self.console = console or Console(highlight=False)
         self.quiet = quiet
+        self.no_logs = no_logs
         self._current_feature: str | None = None
         self._total_tests: int = 0
         self._test_index: int = 0
@@ -220,10 +224,17 @@ class ConsoleReporter:
         self._emit_test_line(markup, replace=True)
         self._replaceable = False
 
+    def _print_test_metrics(self, result: TestResult) -> None:
+        if self.quiet or self.no_logs or result.metrics is None or result.metrics.empty:
+            return
+        for line in format_metrics_lines(result.metrics):
+            self.console.print(f"    [dim]{line}[/dim]")
+
     def _on_TestPassed(self, event: TestPassed) -> None:  # noqa: N802
         line = self._test_line(event.result, "✓", "green")
         if not self.quiet:
             self._finish_test_line(line)
+            self._print_test_metrics(event.result)
 
     def _on_TestSkipped(self, event: TestSkipped) -> None:  # noqa: N802
         line = self._test_line(event.result, "-", "dim")
@@ -246,6 +257,7 @@ class ConsoleReporter:
                     self.console.print(
                         f"    Location: x={loc.x} y={loc.y} {loc.width}x{loc.height}"
                     )
+        self._print_test_metrics(result)
         if result.instrumentation_state:
             self.console.print("\n    Instrumentation:")
             for key, value in sorted(result.instrumentation_state.items()):
@@ -288,3 +300,15 @@ class ConsoleReporter:
         self.console.print(f"Duration: {format_duration(result.duration)}")
         if result.results_dir:
             self.console.print(f"Results:  {result.results_dir}")
+        if (
+            not self.quiet
+            and not self.no_logs
+            and result.metrics is not None
+            and not result.metrics.empty
+        ):
+            self.console.print()
+            self.console.print(
+                f"[bold]Metrics[/bold] ({result.metrics.sample_count} samples across tests)"
+            )
+            for line in format_metrics_lines(result.metrics):
+                self.console.print(f"  {line}")

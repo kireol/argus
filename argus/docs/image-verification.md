@@ -19,6 +19,8 @@ screenshot and the best correlation becomes the confidence score (0..1).
     region: movie_artwork    # optional: search only here
     grayscale: false         # optional: match ignoring color
     scale_tolerance: 0.1     # optional: also try 90% / 110% template size
+                             # (a reference larger than the region is
+                             # auto-shrunk to fit; this is extra slack)
     mask_background: true    # optional: ignore near-black pixels in the reference
 ```
 
@@ -91,6 +93,10 @@ region was searched.
   `wait_until` poll loop never re-reads PNGs from disk.
 - **Regions crop before matching**, so cost scales with the region, not the
   screen.
+- **Auto-fit oversized references:** if the PNG is larger than the search
+  area (for example a 96×112 golden in an 80×80 region), Argus downscales
+  it to the largest size that still fits. Tests do not need `scale_tolerance`
+  for that case. Matching still fails if even a 16px template cannot fit.
 - **Multiscale early exit:** with `scale_tolerance`, Argus tries scale `1.0`
   first (then nearest scales) and stops once confidence meets the threshold.
 - **`wait_until` polls skip screen-info probes** (`wm size` / density); only
@@ -111,8 +117,10 @@ region was searched.
 3. Avoid regions with animation, clocks, or antialiased text at small sizes.
 4. Store under `assets/images/` with names tests can reference
    (`movie_123.png`).
-5. Screen resolutions differ per device — don't assume one; use
-   `scale_tolerance` or per-platform reference images when needed.
+5. Screen resolutions differ per device — don't assume one; Argus will
+   shrink a reference that does not fit the region. Use `scale_tolerance`
+   when the *on-screen* icon is a different size than the (fitted)
+   reference, or keep per-platform images under `assets/images/<WxH>/`.
 
 ## Text (OCR)
 

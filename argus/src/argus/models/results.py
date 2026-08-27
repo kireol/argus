@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from argus.models.common import Region
+from argus.models.metrics import MetricsReport
 
 
 class TestStatus(StrEnum):
@@ -86,6 +87,8 @@ class TestResult(BaseModel):
     attempt_history: list[AttemptRecord] = Field(default_factory=list)
     artifact_dir: str | None = None
     instrumentation_state: dict[str, Any] | None = None
+    #: Min/max/mean/median for FPS, jank, memory, load, … sampled during the test.
+    metrics: MetricsReport | None = None
 
     @property
     def passed(self) -> bool:
@@ -118,6 +121,8 @@ class RunResult(BaseModel):
     results_dir: str | None = None
     stopped_early: bool = False
     stop_reason: str | None = None
+    #: Concatenated per-test series for the whole run.
+    metrics: MetricsReport | None = None
 
     @property
     def executed(self) -> int:

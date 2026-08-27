@@ -21,6 +21,7 @@ input, and captures the process's stdout/stderr as device logs.
 | Pinch / multi-touch | **unsupported** — no portable touch injection; zoom with `device.key: Ctrl+Plus` (`Cmd+Plus` on macOS) |
 | Keys | `press` for single keys (Android names map: `BACK` → `escape`, `DPAD_*` → arrows); `hotkey` for chords like `Ctrl+Shift+t`; an unknown pyautogui key name fails the step with `DeviceCapabilityError` instead of silently doing nothing |
 | Logs | process stdout + stderr |
+| Metrics | `os.getloadavg()`, host uptime (`/proc/uptime`, `kern.boottime`, or `GetTickCount64`), and `ps` RSS/%CPU/elapsed time of the launched (or window-owner) process |
 
 Coordinates in tests are **screenshot pixels** (inside `region` when set),
 as on every other adapter; the adapter converts to pyautogui's logical
@@ -68,7 +69,18 @@ devices:
     stop_timeout: 5s                     # optional, terminate → kill grace
     reset_command: ./scripts/reset.sh    # optional, run between stop and start
     region: [0, 0, 1920, 1080]           # optional, screenshot crop [x, y, w, h] in pixels
+    window_title: "Fallback App (UI)"  # optional, macOS: crop to this window
+    content_size: [1183, 624]            # optional, resize window content to design pixels
+    title_bar_height: 28                 # optional, title-bar points stripped before resize
 ```
+
+`window_title` (macOS) captures that window on **any display** (via
+`screencapture -l` / Quartz, falling back to System Events), strips
+`title_bar_height` points of chrome, then resizes to `content_size` when set
+so test `regions:` can use the app's design pixels regardless of how large
+the user scaled the window. If the window is already open, Argus attaches to
+it and does not launch a second instance. If it is missing at connect time,
+Argus launches `command` and waits for the title.
 
 One configuration file can serve all three OSes by using `${VAR}`
 placeholders for `command` and setting `platforms: [windows, linux, macos]`
@@ -96,6 +108,7 @@ Chords accept these modifier aliases (case-insensitive): `ctrl` / `control`,
 | `pyautogui is not installed` | `pip install "argus[desktop]"` |
 | `no display available` on Linux | set `DISPLAY`, or run under `xvfb-run` |
 | screenshot entirely black (macOS) | grant Screen Recording permission, restart the terminal |
+| `window '…' did not appear` and extra app copies | Screen Recording (Quartz) or Accessibility (System Events) so Argus can see the title; a broken lookup used to launch a new instance every preflight check |
 | input ignored (macOS) | grant Accessibility permission |
 | input ignored (Windows) | run the terminal with the same elevation as the app |
 | `region ... exceeds the screenshot` | the crop must lie inside the screen in **pixels**, not logical points |
