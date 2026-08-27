@@ -29,7 +29,9 @@ def _result(
 
 def _reporter(*, log_level: int = logging.WARNING) -> tuple[ConsoleReporter, StringIO]:
     buffer = StringIO()
-    console = Console(file=buffer, force_terminal=True, width=120, highlight=False)
+    console = Console(
+        file=buffer, force_terminal=True, color_system=None, width=120, highlight=False
+    )
     logging.getLogger("argus").setLevel(log_level)
     return ConsoleReporter(console), buffer
 
@@ -145,7 +147,9 @@ class TestConsoleProgressCounters:
 
     def test_quiet_still_advances_index_for_printed_failures(self):
         buffer = StringIO()
-        console = Console(file=buffer, force_terminal=True, width=120, highlight=False)
+        console = Console(
+        file=buffer, force_terminal=True, color_system=None, width=120, highlight=False
+    )
         logging.getLogger("argus").setLevel(logging.ERROR)
         reporter = ConsoleReporter(console, quiet=True)
         bus = EventBus()
