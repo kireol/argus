@@ -67,6 +67,10 @@ added without modifying the adapter — see
   automatically when no `private_key` is set.
 - Passwords/keys come from environment variables and are never logged.
 
+During each test Argus also samples `/proc/loadavg`, `/proc/uptime`,
+`/proc/meminfo`, and the configured `app.process` RSS/CPU/uptime (same cheap
+`/proc` snapshot as Android, without `dumpsys gfxinfo`).
+
 ## Verifying the setup
 
 ```bash

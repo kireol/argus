@@ -12,7 +12,10 @@ from PIL import Image
 
 from argus.adapters.desktop import (
     DesktopAdapter,
+    _extract_window,
     _host_platform,
+    _MacWindow,
+    _osascript_window_bounds_script,
     _ProcessHandle,
     _pyautogui_backend,
 )
@@ -309,6 +312,28 @@ class TestConfig:
         assert adapter._reset_command == "./reset.sh"
         assert adapter._region == (10, 20, 300, 200)
 
+    def test_from_config_parses_window_title_and_content_size(self):
+        config = DeviceConfig.model_validate(
+            {
+                "type": "desktop",
+                "command": "./app",
+                "window_title": "Fallback App (UI)",
+                "content_size": [1183, 624],
+                "title_bar_height": 22,
+            }
+        )
+        adapter = DesktopAdapter.from_config("app", config)
+        assert adapter._window_title == "Fallback App (UI)"
+        assert adapter._content_size == (1183, 624)
+        assert adapter._title_bar_height == 22
+
+    def test_from_config_rejects_bad_content_size(self):
+        config = DeviceConfig.model_validate(
+            {"type": "desktop", "command": "x", "content_size": [1183]}
+        )
+        with pytest.raises(ConfigurationError, match="content_size"):
+            DesktopAdapter.from_config("app", config)
+
     def test_from_config_uses_effective_platform(self):
         config = DeviceConfig.model_validate(
             {"type": "desktop", "command": "x", "platform": "linux"}
@@ -500,6 +525,84 @@ class TestObservation:
         with pytest.raises(ScreenshotError, match="region"):
             adapter.screenshot()
 
+    def test_extract_window_crops_title_bar_and_resizes(self):
+        # 800x600 logical = 800x600 pixels; window at (100, 50, 200, 128)
+        # title bar 28px → content 200x100 → resize to 100x50.
+        image = Image.new("RGB", (800, 600), (0, 0, 0))
+        for x in range(100, 300):
+            for y in range(50 + 28, 50 + 128):
+                image.putpixel((x, y), (10, 200, 30))
+        out = _extract_window(
+            image,
+            logical_size=(800, 600),
+            bounds=(100, 50, 200, 128),
+            title_bar_pt=28,
+            content_size=(100, 50),
+        )
+        assert out.size == (100, 50)
+        # Interior of the resized crop should still be the green content, not the
+        # black title bar.
+        assert out.getpixel((50, 25))[1] > 100
+
+    def test_screenshot_uses_window_title(self, monkeypatch, backend):
+        monkeypatch.setattr(
+            "argus.adapters.desktop._macos_window_info",
+            lambda title, process_name=None: (
+                _MacWindow(bounds=(10, 20, 200, 100)) if title == "App" else None
+            ),
+        )
+        adapter = DesktopAdapter(
+            "app",
+            command="x",
+            window_title="App",
+            content_size=(200, 72),
+            title_bar_height=28,
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        img = adapter.screenshot()
+        assert img.size == (200, 72)
+
+    def test_connect_does_not_relaunch_when_window_exists(self, monkeypatch, backend):
+        monkeypatch.setattr(
+            "argus.adapters.desktop._macos_window_info",
+            lambda title, process_name=None: _MacWindow(bounds=(0, 0, 200, 100)),
+        )
+        launched: list[int] = []
+
+        def _boom(*_args, **_kwargs):
+            launched.append(1)
+            raise AssertionError("must not launch a second instance")
+
+        monkeypatch.setattr("argus.adapters.desktop._ProcessHandle", _boom)
+        adapter = DesktopAdapter(
+            "app",
+            command="/definitely/not/a/binary",
+            window_title="App",
+            backend_factory=lambda: backend,
+        )
+        adapter.connect()
+        assert launched == []
+        assert adapter.is_application_running()
+
+
+class TestMacosWindowScript:
+    def test_targeted_script_has_no_backslash_continuation(self):
+        script = _osascript_window_bounds_script(
+            "Fallback App (UI)", "fallback-app-mac"
+        )
+        assert "\\" not in script
+        assert "Fallback App (UI)" in script
+        assert "fallback-app-mac" in script
+        assert "return" in script
+
+    def test_all_processes_script_has_no_backslash_continuation(self):
+        script = _osascript_window_bounds_script("App")
+        assert "\\" not in script
+        assert "repeat with p in processes" in script
+
+
+class TestObservationContinued:
     def test_hidpi_ratio_from_screenshot_vs_logical(self):
         backend = FakeBackend(logical=(800, 600), pixels=(1600, 1200))
         adapter = DesktopAdapter("app", command="x", backend_factory=lambda: backend)

@@ -119,6 +119,17 @@ class Device(ABC):
     def get_logs(self, lines: int = 200) -> str:
         raise self._unsupported("get_logs")
 
+    def begin_metrics_session(self) -> None:  # noqa: B027 - optional hook
+        """Reset per-test counters (e.g. ``dumpsys gfxinfo reset``). Optional."""
+
+    def sample_metrics(self) -> dict[str, float]:
+        """Cheap snapshot of app/system performance while a test runs.
+
+        Keys are stable names such as ``fps``, ``app_rss_mb``, ``system_load_1m``.
+        Return ``{}`` when the adapter cannot sample. Must not raise.
+        """
+        return {}
+
     def get_playback_state(self) -> PlaybackState:
         """Current media playback state (devices with supports_playback_state)."""
         raise self._unsupported("get_playback_state")

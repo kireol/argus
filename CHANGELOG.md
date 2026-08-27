@@ -4,6 +4,38 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.6] - 2026-08-27
+
+### Added
+- **In-run app metrics.** While each test runs, Argus samples the app under
+  test (FPS, jank, RSS / CPU / threads, system/app uptime, system load,
+  available memory).
+  Reports show **min, max, average, and median** for every metric, plus the
+  chronological samples next to that test in `report.html`, `report.json`,
+  `junit.xml`, and `metrics.json`. Android **FPS** is the display refresh
+  rate from `dumpsys SurfaceFlinger --latency` (~60 Hz). Unique HWUI/Compose
+  submits are **App FPS** — an idle app often only invalidates ~2
+  times/s, which previously showed up as FPS ≈ 2. Disable or slow sampling
+  with `metrics.enabled` / `metrics.interval`. Console metric lines are
+  omitted when `--no-logs` or `--quiet` is set; HTML / JSON / JUnit still
+  include them.
+
+### Fixed
+- **Oversized reference images no longer fail before matching.** If a
+  golden is larger than the search region (e.g. 96×112 turn-signal PNG in
+  an 80×80 crop), Argus downscales it to the largest size that still fits.
+  Tests do not need `scale_tolerance` for that case. Matching still errors
+  when even a 16px template cannot fit the region.
+- **On-screen icons smaller than the golden.** After native scale,
+  `image_present` also tries shrinking the template down to 16px so a
+  96×112 Figma master still matches a ~22px on-screen instance. Native hits
+  still exit after one `matchTemplate` call. `image_not_present` does
+  **not** auto-shrink: a 140px Park `P` at 28px was matching speedo
+  chrome at 0.94 (VM-POWER-001). Explicit `scale_tolerance` still applies.
+- **`--save-comparisons` on composite `wait_until`.** `all` / `any`
+  image conditions now write `actual.png` plus per-child `*_expected.png`
+  (previously only leaf `image_present` steps produced comparison files).
+
 ## [1.2.5] - 2026-08-26
 
 ### Added

@@ -392,7 +392,7 @@ def run(
     console.print("Loading tests...")
 
     events = EventBus()
-    ConsoleReporter(console, quiet=state.quiet).attach(events)
+    ConsoleReporter(console, quiet=state.quiet, no_logs=state.no_logs).attach(events)
     runner = TestRunner(app_config, events)
 
     try:
@@ -524,7 +524,7 @@ def _dry_run() -> None:
     console.print(f"Loaded and validated [bold]{len(tests)}[/bold] test definitions.")
 
     events = EventBus()
-    ConsoleReporter(console, quiet=state.quiet).attach(events)
+    ConsoleReporter(console, quiet=state.quiet, no_logs=state.no_logs).attach(events)
     with RunSession(config, events) as session:
         device_names = [
             name for name, dev in sorted(config.devices.items()) if dev.configured
