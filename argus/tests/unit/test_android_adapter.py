@@ -254,3 +254,49 @@ def test_is_application_running_true_with_pid(monkeypatch) -> None:
     adapter._connected = True
     assert adapter.is_application_running() is True
     assert calls[0][:3] == ["adb", "-s", "emulator-5554"]
+
+
+def test_sample_metrics_parses_shell_snapshot(adapter, shell) -> None:
+    adapter._app_package = "com.example.app"
+    canned = (
+        "LOAD=1.25 0.80 0.50 1/200 9\n"
+        "MEM=2048000 1024000\n"
+        "PID=4321\n"
+        "STATUS_RSS=102400\n"
+        "STATUS_SIZE=512000\n"
+        "THREADS=8\n"
+        "UPTIME=20.0\n"
+        "STAT=4321 (app) S 1 1 1 0 0 0 0 0 0 0 10 0 0 0 20 0 8 0 1000\n"
+        "CLK=100\n"
+        "GFXINFO_BEGIN\n"
+        "Total frames rendered: 10\n"
+        "Janky frames: 1\n"
+        "GFXINFO_END\n"
+    )
+
+    def fake_shell(*args: str) -> str:
+        shell.calls.append(args)
+        if args[:2] == ("dumpsys", "gfxinfo"):
+            return ""
+        if args[:2] == ("sh", "-c"):
+            return canned
+        return ""
+
+    adapter._shell = fake_shell  # type: ignore[method-assign]
+    adapter.begin_metrics_session()
+    sample = adapter.sample_metrics()
+    assert sample["system_load_1m"] == 1.25
+    assert abs(sample["app_rss_mb"] - 100.0) < 1e-9
+    assert sample["system_uptime_s"] == 20.0
+    assert sample["app_uptime_s"] == 10.0
+    assert "fps" not in sample
+    canned_second = canned.replace("UPTIME=20.0", "UPTIME=21.0").replace(
+        "Total frames rendered: 10", "Total frames rendered: 70"
+    ).replace("Janky frames: 1", "Janky frames: 4")
+    adapter._shell = lambda *a: canned_second if a[:2] == ("sh", "-c") else ""  # type: ignore[method-assign]
+    second = adapter.sample_metrics()
+    assert second["fps"] == 60.0
+    assert second["app_fps"] == 60.0
+    assert second["jank_percent"] == 5.0
+    assert second["system_uptime_s"] == 21.0
+    assert second["app_uptime_s"] == 11.0

@@ -69,6 +69,7 @@ When `serial` is not set, the adapter resolves the target at connect time
 | Pinch / multi-touch | evdev multi-touch (protocol B) events via `sendevent`, see below |
 | Screen size / DPI | `wm size` / `wm density` |
 | Logs | `adb logcat -d -t <lines>` |
+| Metrics | `/proc/loadavg`, `/proc/uptime`, `/proc/<pid>/stat` (app uptime from starttime), `/proc/<pid>/status`, `/proc/meminfo`, `dumpsys gfxinfo <package>` (jank, unique App FPS, frame percentiles), and `dumpsys SurfaceFlinger --latency` (display FPS from the vsync period). Sampled in the background during each test. |
 
 Keys accept short names: `key: HOME` becomes `KEYCODE_HOME`.
 

@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from argus.models.metrics import junit_metric_properties
 from argus.models.results import RunResult, TestResult, TestStatus
 
 CaseProperties = Callable[[TestResult], Mapping[str, str]]
@@ -60,8 +61,12 @@ def write_junit_report(
             case.set("name", f"{test.test_id}: {name}")
             case.set("classname", f"{feature}.{test.test_id}")
             case.set("time", f"{test.duration:.3f}")
+            extra: dict[str, str] = {}
             if case_properties is not None:
-                _add_properties(case, case_properties(test))
+                extra.update(case_properties(test))
+            if test.metrics is not None and not test.metrics.empty:
+                extra.update(junit_metric_properties(test.metrics))
+            _add_properties(case, extra)
             if test.status == TestStatus.FAILED:
                 failure = ET.SubElement(case, "failure")
                 failure.set("message", (test.error or "test failed")[:500])
