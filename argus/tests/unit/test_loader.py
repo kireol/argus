@@ -225,3 +225,79 @@ def test_invalid_suite_lifecycle_rejected(tmp_path):
     write(tmp_path, "a.yaml", "suite: [1]\n")
     with pytest.raises(TestDefinitionError, match="'suite' must be a mapping"):
         load_suite([tmp_path])
+
+
+SKIP_SUITE = """
+features:
+  Player:
+    skip: player device is in the shop
+    setup:
+      - action: log
+        message: never runs
+
+tests:
+  - id: S-001
+    name: Skipped with flag
+    feature: Movies
+    skip: true
+    steps:
+      - action: log
+        message: hi
+  - id: S-002
+    name: Skipped with reason
+    feature: Movies
+    skip: flaky until ARG-42 lands
+    steps:
+      - action: log
+        message: hi
+  - id: S-003
+    name: Not skipped
+    feature: Movies
+    skip: false
+    steps:
+      - action: log
+        message: hi
+  - id: S-004
+    name: Default
+    feature: Player
+    steps:
+      - action: log
+        message: hi
+"""
+
+
+def test_skip_true_gives_default_reason(tmp_path):
+    write(tmp_path, "skip.yaml", SKIP_SUITE)
+    tests = {t.id: t for t in load_tests([tmp_path])}
+    assert tests["S-001"].skip_reason == "skipped"
+
+
+def test_skip_string_is_the_reason(tmp_path):
+    write(tmp_path, "skip.yaml", SKIP_SUITE)
+    tests = {t.id: t for t in load_tests([tmp_path])}
+    assert tests["S-002"].skip_reason == "flaky until ARG-42 lands"
+
+
+def test_skip_false_and_absent_mean_not_skipped(tmp_path):
+    write(tmp_path, "skip.yaml", SKIP_SUITE)
+    tests = {t.id: t for t in load_tests([tmp_path])}
+    assert tests["S-003"].skip_reason is None
+    assert tests["S-004"].skip_reason is None
+
+
+def test_feature_skip_is_loaded(tmp_path):
+    from argus.engine.loader import load_suite
+
+    write(tmp_path, "skip.yaml", SKIP_SUITE)
+    suite = load_suite([tmp_path])
+    assert suite.feature_for("player").skip_reason == "player device is in the shop"
+
+
+def test_skip_rejects_non_bool_non_string(tmp_path):
+    write(
+        tmp_path,
+        "bad.yaml",
+        "id: B-1\nname: bad\nfeature: F\nskip: [a]\nsteps:\n  - action: log\n    message: x\n",
+    )
+    with pytest.raises(TestDefinitionError, match="skip"):
+        load_tests([tmp_path])

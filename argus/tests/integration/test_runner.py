@@ -609,3 +609,84 @@ def test_text_evidence_without_save_comparisons_only_on_failure(tmp_path):
     failed_dir = Path(failed.artifact_dir)
     assert (failed_dir / "actual.png").exists() and (failed_dir / "ocr.txt").exists()
     assert "text_present FAILED" in (failed_dir / "ocr.txt").read_text()
+
+
+# -- skip: on tests and features ------------------------------------------------------------
+
+
+def test_skipped_test_is_reported_skipped_with_reason_and_not_run(tmp_path):
+    from argus.events.events import TestSkipped, TestStarted
+
+    config = build_config(tmp_path)
+    write_suite(
+        tmp_path,
+        [
+            passing_test("P-001"),
+            failing_test("F-002", skip="broken until ARG-42"),
+            passing_test("P-003", skip=True),
+        ],
+    )
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run()
+
+    assert result.status == RunStatus.PASSED
+    by_id = {t.test_id: t for t in result.tests}
+    assert by_id["F-002"].status == TestStatus.SKIPPED
+    assert by_id["F-002"].error == "broken until ARG-42"
+    assert by_id["P-003"].status == TestStatus.SKIPPED
+    assert by_id["P-003"].error == "skipped"
+    assert result.skipped_count == 2
+    started = [e.test_id for e in seen if isinstance(e, TestStarted)]
+    assert started == ["P-001"]
+    skipped = [e.result.test_id for e in seen if isinstance(e, TestSkipped)]
+    assert skipped == ["F-002", "P-003"]
+
+
+def test_skipped_feature_skips_its_tests_without_running_setup(tmp_path):
+    config = build_config(tmp_path)
+    features = {
+        "Feature": {
+            "skip": "device in the shop",
+            "setup": [{"action": "backend.set", "data": {"movieId": 123}}],
+        }
+    }
+    write_suite_with_features(
+        tmp_path, [passing_test("P-001"), passing_test("P-002", feature="Other")], features
+    )
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run()
+
+    by_id = {t.test_id: t for t in result.tests}
+    assert by_id["P-001"].status == TestStatus.SKIPPED
+    assert by_id["P-001"].error == "feature 'Feature' skipped: device in the shop"
+    assert by_id["P-002"].status == TestStatus.PASSED
+    assert not _feature_events(seen)
+
+
+def test_suite_lifecycle_and_preflight_skipped_when_every_test_is_skipped(tmp_path):
+    config = build_config(tmp_path)
+    suites = tmp_path / "suites"
+    suites.mkdir(exist_ok=True)
+    (suites / "suite.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "suite": {"setup": [{"action": "log", "message": "setup"}]},
+                "tests": [passing_test("P-001", skip=True)],
+            }
+        )
+    )
+    events = EventBus()
+    seen = []
+    events.subscribe(seen.append)
+    result = TestRunner(config, events).run()
+
+    names = [type(e).__name__ for e in seen]
+    assert "SuiteSetupStarted" not in names
+    assert result.status == RunStatus.PASSED
+    assert result.skipped_count == 1
+    # The skipped test's device is not pre-flighted (nothing needs it).
+    assert not [r for r in result.preflight if "fake_android" in f"{r.name} {r.target}"]
