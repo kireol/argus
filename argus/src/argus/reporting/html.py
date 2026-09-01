@@ -11,6 +11,7 @@ from argus import __version__
 from argus.models.metrics import (
     MetricsReport,
     compact_metrics_summary,
+    description_for,
     format_metric_value,
     label_for,
     ordered_metric_names,
@@ -140,6 +141,9 @@ a { color: var(--accent); }
   text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .metrics summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.metrics [title] {
+  cursor: help; text-decoration: underline dotted var(--muted); text-underline-offset: 3px;
+}
 """
 
 _JS = """
@@ -256,21 +260,44 @@ def _metrics_cell(test: TestResult) -> str:
     return f'<td class="metrics-cell">{text}</td>'
 
 
+_STAT_TIPS = {
+    "Metric": "Sampled in the background while the test ran (one snapshot per "
+    "metrics.interval, default 1s). Hover a metric name for what it measures.",
+    "Min": "Lowest value seen in any sample during this test.",
+    "Max": "Highest value seen in any sample during this test.",
+    "Average": "Arithmetic mean of all samples during this test.",
+    "Median": "Middle value of all samples during this test — less affected by a "
+    "single spike than the average.",
+}
+
+
+def _stat_header(text: str) -> str:
+    return f'<th title="{html.escape(_STAT_TIPS[text], quote=True)}">{text}</th>'
+
+
+def _metric_label(name: str, *, unit: str = "") -> str:
+    """Metric name with an optional unit; hover shows what the metric means."""
+    label = html.escape(label_for(name))
+    tip = description_for(name)
+    if tip:
+        label = f'<span title="{html.escape(tip, quote=True)}">{label}</span>'
+    if unit:
+        label = f"{label} <span class='muted'>({html.escape(unit)})</span>"
+    return label
+
+
 def _metrics_summary_table(report: MetricsReport) -> str:
     rows = [
         "<tr>"
-        "<th>Metric</th><th>Min</th><th>Max</th><th>Average</th><th>Median</th>"
-        "</tr>"
+        + "".join(_stat_header(h) for h in ("Metric", "Min", "Max", "Average", "Median"))
+        + "</tr>"
     ]
     body: list[str] = []
     for name, summary in report.metrics.items():
         unit = summary.unit
-        label = html.escape(label_for(name))
-        if unit:
-            label = f"{label} <span class='muted'>({html.escape(unit)})</span>"
         body.append(
             "<tr>"
-            f"<td>{label}</td>"
+            f"<td>{_metric_label(name, unit=unit)}</td>"
             f"<td class='num'>{html.escape(format_metric_value(summary.min, unit))}</td>"
             f"<td class='num'>{html.escape(format_metric_value(summary.max, unit))}</td>"
             f"<td class='num'>{html.escape(format_metric_value(summary.average, unit))}</td>"
@@ -292,9 +319,7 @@ def _metrics_samples_table(report: MetricsReport) -> str:
     names = ordered_metric_names({key for tick in report.samples for key in tick.values})
     if not names:
         return ""
-    header = "".join(
-        f"<th>{html.escape(label_for(name))}</th>" for name in names
-    )
+    header = "".join(f"<th>{_metric_label(name)}</th>" for name in names)
     body: list[str] = []
     for tick in report.samples:
         cells = [f"<td class='num'>{tick.t:.1f}s</td>"]
