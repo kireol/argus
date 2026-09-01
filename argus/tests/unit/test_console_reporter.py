@@ -253,3 +253,17 @@ class TestMetricsConsoleOutput:
         assert "average=" not in text
         assert "median=" not in text
 
+
+
+class TestSkippedReason:
+    def test_skipped_line_shows_reason(self):
+        reporter, buffer = _reporter()
+        bus = EventBus()
+        reporter.attach(bus)
+        bus.publish(TestRunStarted(total_tests=1))
+        result = _result("T-1", "first", status=TestStatus.SKIPPED)
+        result.error = "flaky until ARG-42"
+        bus.publish(TestSkipped(result=result))
+        text = buffer.getvalue()
+        assert "- 1/1 - T-1" in text
+        assert "skipped: flaky until ARG-42" in text

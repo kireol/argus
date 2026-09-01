@@ -179,6 +179,8 @@ class TestRunner:
         suite = self.load_suite()
         tests = options.filters.apply(suite.tests)
         total_tests = len(tests)
+        skip_reasons = {t.id: r for t in tests if (r := self._skip_reason(suite, t))}
+        runnable = [t for t in tests if t.id not in skip_reasons]
         start_index = 1
         if options.skip_to is not None:
             tests, start_index = self._apply_skip_to(tests, options.skip_to)
@@ -203,9 +205,9 @@ class TestRunner:
             )
 
             # -- pre-flight -----------------------------------------------------------
-            device_names = self.device_names_for(tests, options.filters)
+            device_names = self.device_names_for(runnable, options.filters)
             if not options.skip_preflight:
-                checks = build_preflight_checks(session, tests, device_names)
+                checks = build_preflight_checks(session, runnable, device_names)
                 results, passed = run_preflight(checks, self.events)
                 run_result.preflight = results
                 if not passed:
@@ -229,16 +231,20 @@ class TestRunner:
             cancelled = False
             plan = [
                 (test, platform)
-                for test in tests
+                for test in runnable
                 for platform in self._platforms_for(test, options.filters, session)
             ]
             lifecycle = _FeatureLifecycle(self, session, artifacts, suite, plan)
             suite_lifecycle = _SuiteLifecycle(self, session, artifacts, suite.lifecycle)
             suite_error: str | None = None
             try:
-                if tests:
+                if runnable:
                     suite_error = suite_lifecycle.setup()
                 for test in tests:
+                    if test.id in skip_reasons:
+                        run_result.tests.append(self._skipped(test, skip_reasons[test.id]))
+                        self.events.publish(TestSkipped(result=run_result.tests[-1]))
+                        continue
                     if suite_error is not None:
                         for platform in self._platforms_for(test, options.filters, session):
                             run_result.tests.append(
@@ -276,7 +282,7 @@ class TestRunner:
                                 break
             finally:
                 lifecycle.close()
-                if tests:
+                if runnable:
                     suite_lifecycle.teardown()
 
             if run_result.tests and artifacts.has_run_dir:
@@ -480,6 +486,16 @@ class TestRunner:
         )
         self.events.publish(TestFailed(result=result))
         return result
+
+    @staticmethod
+    def _skip_reason(suite: TestSuite, test: TestDefinition) -> str | None:
+        """Why ``test`` is skipped by its own or its feature's ``skip:``, else ``None``."""
+        if test.skip_reason is not None:
+            return test.skip_reason
+        feature = suite.feature_for(test.feature)
+        if feature is not None and feature.skip_reason is not None:
+            return f"feature {feature.name!r} skipped: {feature.skip_reason}"
+        return None
 
     def _skipped(self, test: TestDefinition, reason: str) -> TestResult:
         return TestResult(

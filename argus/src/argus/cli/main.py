@@ -590,7 +590,8 @@ def list_tests(
         console.print(f"\n[bold]{feature_name}[/bold]")
         for test in by_feature[feature_name]:
             platforms = f"  [dim]({', '.join(test.platforms)})[/dim]" if test.platforms else ""
-            console.print(f"  {test.id:<10} {test.name}{platforms}")
+            skip = f"  [yellow]skip: {test.skip_reason}[/yellow]" if test.skip_reason else ""
+            console.print(f"  {test.id:<10} {test.name}{platforms}{skip}")
     console.print(f"\n{len(tests)} tests.")
 
 

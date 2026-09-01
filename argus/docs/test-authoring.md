@@ -18,6 +18,7 @@ platforms: [android, yocto]      # runs once per platform with a configured devi
 
 priority: high                   # optional metadata
 timeout: 60s                     # optional overall budget (informational)
+skip: flaky until ARG-42 lands   # optional: true or a reason; reported as skipped
 
 requires:                        # optional resource requirements
   devices: [yocto-living-room]   # pin to a specific configured device
@@ -293,3 +294,41 @@ Rules:
   error, like a duplicate test ID. Defining a feature no test uses is fine.
 - Feature steps see `${variables}` from the config but not a test's
   `parameters:`.
+- `skip:` on a feature skips every test of that feature (see below).
+
+## Skipping tests and features
+
+Temporarily take a test out of the run without deleting it or juggling tags
+with `skip:`. It accepts `true` or, better, a free-text reason:
+
+```yaml
+- id: MOV-007
+  name: Trailer autoplays
+  feature: Movies
+  skip: trailer CDN is down until 2026-09-15   # or simply: skip: true
+  steps: ...
+```
+
+A whole feature can be skipped from its `features:` entry:
+
+```yaml
+features:
+  Player:
+    skip: player device is in the shop
+    setup: ...
+```
+
+Rules:
+
+- A skipped test is **reported, not hidden**: it appears as `- MOV-007 …
+  skipped: <reason>` on the console and with status `skipped` in
+  `report.html` / `report.json` / `junit.xml`; the summary counts it under
+  **Skipped**. A test filtered out by `--test`/`--tag`/`--platform` is not
+  listed at all — that is the difference between filtering and skipping.
+- Skipped tests never run: no test setup/steps/teardown, no feature setup,
+  no device pre-flight for a device only they need. If every selected test
+  is skipped, suite setup/teardown do not run either.
+- A test's own `skip:` wins; otherwise a skipped feature applies its reason
+  as `feature 'Player' skipped: <reason>`.
+- `skip: false` (the default) or an empty value means "run".
+- `argus list` marks skipped tests with `skip: <reason>`.
