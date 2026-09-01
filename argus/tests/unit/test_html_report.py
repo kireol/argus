@@ -158,3 +158,43 @@ def test_html_report_shows_metrics_next_to_test(tmp_path: Path) -> None:
     assert ">Average</th>" in html
     assert ">Median</th>" in html
 
+
+
+def test_html_report_metric_labels_carry_hover_descriptions(tmp_path: Path) -> None:
+    from argus.models.metrics import MetricSample, build_report, description_for
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    report = build_report(
+        {"fps": [60.0, 60.0], "app_rss_mb": [100.0, 120.0]},
+        interval_seconds=1.0,
+        samples=[
+            MetricSample(t=0.0, values={"fps": 60.0, "app_rss_mb": 100.0}),
+            MetricSample(t=1.0, values={"fps": 60.0, "app_rss_mb": 120.0}),
+        ],
+    )
+    result = RunResult(
+        status=RunStatus.PASSED,
+        results_dir=str(run_dir),
+        tests=[
+            TestResult(
+                test_id="T-1",
+                name="t",
+                feature="F",
+                status=TestStatus.PASSED,
+                platform="android",
+                metrics=report,
+            )
+        ],
+        metrics=report,
+    )
+    html = write_html_report(result, run_dir / "report.html").read_text(encoding="utf-8")
+    import html as html_mod
+
+    fps_tip = html_mod.escape(description_for("fps"), quote=True)
+    rss_tip = html_mod.escape(description_for("app_rss_mb"), quote=True)
+    # Summary rows (run-level and per-test) and the samples-table headers.
+    assert html.count(f'title="{fps_tip}"') >= 3
+    assert html.count(f'title="{rss_tip}"') >= 3
+    # Column headers explain what the statistics cover.
+    assert '<th title="' in html and ">Average</th>" in html
