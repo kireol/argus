@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.7] - 2026-09-01
+
+### Added
+- **`skip:` on tests and features.** `skip: true` or `skip: <reason>` in a
+  test definition (or in a `features:` entry, which covers every test of
+  that feature) reports the test as **skipped** with the reason — on the
+  console, in `report.html` / `report.json` / `junit.xml`, in `argus list`
+  and in the MCP `argus_list_tests` summary — without running it. Skipped
+  tests trigger no feature/suite setup and no device pre-flight.
+
 ## [1.2.6] - 2026-08-27
 
 ### Added
