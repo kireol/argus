@@ -81,6 +81,109 @@ METRIC_LABELS: dict[str, str] = {
     "system_mem_used_percent": "Mem used",
 }
 
+# Plain-language meaning of each metric, shown as a hover tooltip in report.html.
+# Every metric is a snapshot per sample interval (metrics.interval, default 1s);
+# min / max / average / median summarize those samples over one test.
+METRIC_DESCRIPTIONS: dict[str, str] = {
+    "fps": (
+        "Display refresh rate the app is rendering against, from the compositor's vsync "
+        "period (Android: dumpsys SurfaceFlinger --latency). Usually a constant such as 60 "
+        "or 120; a drop means the display itself changed mode. It is not how often the app "
+        "drew — see App FPS for that."
+    ),
+    "app_fps": (
+        "Frames the app actually produced per second: unique frames in the last second of "
+        "the renderer's profile data (Android: dumpsys gfxinfo). An idle app that only "
+        "redraws when something changes legitimately reads low (1–5); watch it during "
+        "animations, scrolling and video, where it should approach FPS."
+    ),
+    "jank_percent": (
+        "Share of frames drawn during this sample interval that the renderer flagged as "
+        "janky, i.e. took longer than one vsync period and so were displayed late or "
+        "dropped. 0% is smooth; sustained values above ~10% are visible stutter."
+    ),
+    "missed_vsync": (
+        "Number of frames in this sample interval that missed their vsync deadline "
+        "because the app started drawing too late (the UI thread was busy). A cause of "
+        "jank; each one is a frame the user waited an extra refresh for."
+    ),
+    "slow_ui_frames": (
+        "Frames in this sample interval whose UI-thread work (measure/layout/draw, input "
+        "handling) exceeded its budget. Points at expensive layouts, main-thread I/O or "
+        "heavy view hierarchies rather than GPU cost."
+    ),
+    "deadline_missed": (
+        "Frames in this sample interval that were not ready when the display needed "
+        "them, counted over the whole pipeline (UI thread plus render thread/GPU). Any "
+        "value above 0 means at least one visibly dropped or repeated frame."
+    ),
+    "frame_p50_ms": (
+        "Median time to produce one frame (50th percentile) across the renderer's recent "
+        "frame history. At 60 Hz the budget is 16.7 ms, at 120 Hz 8.3 ms; a p50 near or "
+        "above the budget means most frames are late."
+    ),
+    "frame_p90_ms": (
+        "Frame time that 90% of recent frames stay under; the remaining 10% were slower. "
+        "Shows the typical worst case a user sees every second or two."
+    ),
+    "frame_p95_ms": (
+        "Frame time that 95% of recent frames stay under. A p95 well above the vsync "
+        "budget (16.7 ms at 60 Hz) means regular, noticeable hitches."
+    ),
+    "frame_p99_ms": (
+        "Frame time that 99% of recent frames stay under — the slowest 1%, usually the "
+        "long stalls (GC pauses, big layouts, image decodes) that users notice most."
+    ),
+    "app_rss_mb": (
+        "Resident set size: physical RAM the app process is currently using, in MiB "
+        "(shared libraries included). A steady climb across samples suggests a leak; the "
+        "max shows the test's peak footprint."
+    ),
+    "app_vsize_mb": (
+        "Virtual address space the app process has mapped, in MiB. Much larger than RSS "
+        "and mostly not backed by RAM; only its growth over time is meaningful."
+    ),
+    "app_cpu_percent": (
+        "CPU time the app process consumed during this sample interval, as a percentage "
+        "of one core (user + kernel time). Can exceed 100% on multi-core devices when "
+        "several threads are busy at once."
+    ),
+    "app_threads": (
+        "Number of threads in the app process. Thread pools grow under load; a count "
+        "that keeps rising without falling back suggests threads are leaked."
+    ),
+    "app_uptime_s": (
+        "Seconds since the app process started. Drops back toward 0 when the app "
+        "restarted, crashed and relaunched, or was killed and recreated during the test."
+    ),
+    "system_uptime_s": (
+        "Seconds since the device booted. A reset to near 0 mid-run means the device "
+        "rebooted."
+    ),
+    "system_load_1m": (
+        "System load average over the last minute: runnable plus (on Linux) "
+        "uninterruptible-I/O tasks. Compare with the number of CPU cores — equal to the "
+        "core count is fully busy, above it is oversubscribed."
+    ),
+    "system_load_5m": (
+        "System load average over the last 5 minutes; smoother than the 1-minute value "
+        "and useful for spotting a device that was already busy before the test started."
+    ),
+    "system_load_15m": (
+        "System load average over the last 15 minutes — the long-term baseline. Rising "
+        "1m over a low 15m means load started during this run."
+    ),
+    "system_mem_available_mb": (
+        "RAM the system estimates can be given to new work without swapping, in MiB "
+        "(free memory plus reclaimable caches). Low values put the app at risk of being "
+        "killed by the low-memory killer."
+    ),
+    "system_mem_used_percent": (
+        "Percentage of total RAM in use across the device (100% minus available), i.e. "
+        "memory pressure rather than the app's own footprint."
+    ),
+}
+
 
 class MetricSummary(BaseModel):
     """Aggregates for one named series: min, max, average, and median."""
@@ -121,6 +224,11 @@ def unit_for(name: str) -> str:
 
 def label_for(name: str) -> str:
     return METRIC_LABELS.get(name, name.replace("_", " "))
+
+
+def description_for(name: str) -> str:
+    """Hover/help text for a metric; empty for unknown (custom) metric names."""
+    return METRIC_DESCRIPTIONS.get(name, "")
 
 
 def ordered_metric_names(names: list[str] | tuple[str, ...] | set[str]) -> list[str]:

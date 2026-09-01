@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Metric tooltips in `report.html`.** Hovering a metric name (FPS, App FPS,
+  Jank, Frame p99, App RSS, Load 1m, …) in the run summary, a test's metrics
+  table or its samples table shows a plain-language description of what it
+  measures and how to read it; the Min / Max / Average / Median headers say
+  what they summarize. Descriptions live in
+  `argus.models.metrics.METRIC_DESCRIPTIONS`.
+
 ## [1.2.7] - 2026-09-01
 
 ### Added
