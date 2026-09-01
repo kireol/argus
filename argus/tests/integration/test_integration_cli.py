@@ -234,3 +234,15 @@ def test_invalid_config_reports_clearly(tmp_path):
     result = runner.invoke(app, ["list", "--config", str(bad)])
     assert result.exit_code == 2
     assert "CONFIGURATION ERROR" in result.output
+
+
+def test_list_marks_skipped_tests(project, tmp_path):
+    suite = tmp_path / "suites" / "movies.yaml"
+    data = yaml.safe_load(suite.read_text())
+    data["tests"][1]["skip"] = "settings screen removed"
+    suite.write_text(yaml.safe_dump(data))
+    result = runner.invoke(app, ["list", "--config", str(project)], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    assert "SET-001" in result.output
+    assert "skip: settings screen removed" in result.output
+    assert "MOV-001" in result.output
