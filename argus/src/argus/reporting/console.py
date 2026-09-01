@@ -238,6 +238,8 @@ class ConsoleReporter:
 
     def _on_TestSkipped(self, event: TestSkipped) -> None:  # noqa: N802
         line = self._test_line(event.result, "-", "dim")
+        if event.result.error:
+            line += f"  [dim]skipped: {event.result.error}[/dim]"
         if not self.quiet:
             self._finish_test_line(line)
 

@@ -453,3 +453,15 @@ async def test_concurrent_read_requests(client: Client):
         call(client, "argus_get_test", test_id="PASS-001"),
     )
     assert all(not r.is_error for r in results)
+
+
+def test_test_summary_carries_skip_reason():
+    from argus.mcp.schemas import TestSummary
+    from argus.models.test_definition import TestDefinition
+
+    test = TestDefinition.model_validate(
+        {"id": "S-1", "name": "s", "feature": "F", "skip": "on hold", "steps": [{"action": "log"}]}
+    )
+    assert TestSummary.from_definition(test).skip_reason == "on hold"
+    test.skip = False
+    assert TestSummary.from_definition(test).skip_reason is None

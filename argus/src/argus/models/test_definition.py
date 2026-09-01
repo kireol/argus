@@ -92,6 +92,21 @@ class Step(BaseModel):
         return dict(self.model_extra or {})
 
 
+#: ``skip:`` accepts ``true`` (default reason) or a free-text reason.
+SkipSpec = bool | str | None
+
+DEFAULT_SKIP_REASON = "skipped"
+
+
+def skip_reason_of(skip: SkipSpec) -> str | None:
+    """Reason a definition is skipped, or ``None`` when it should run."""
+    if skip is True:
+        return DEFAULT_SKIP_REASON
+    if isinstance(skip, str) and skip.strip():
+        return skip.strip()
+    return None
+
+
 class FeatureDefinition(BaseModel):
     """Feature-level lifecycle: steps run once per feature (per platform)."""
 
@@ -100,9 +115,15 @@ class FeatureDefinition(BaseModel):
     name: str = Field(min_length=1)
     setup: list[Step] = Field(default_factory=list)
     teardown: list[Step] = Field(default_factory=list)
+    #: Skip every test of this feature (``true`` or a reason).
+    skip: SkipSpec = False
 
     # Populated by the loader; not authored in YAML.
     source_file: str | None = None
+
+    @property
+    def skip_reason(self) -> str | None:
+        return skip_reason_of(self.skip)
 
 
 class SuiteDefinition(BaseModel):
@@ -145,9 +166,15 @@ class TestDefinition(BaseModel):
     teardown: list[Step] = Field(default_factory=list)
     parameters: dict[str, Any] = Field(default_factory=dict)
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
+    #: Skip this test (``true`` or a reason); it is reported as SKIPPED.
+    skip: SkipSpec = False
 
     # Populated by the loader; not authored in YAML.
     source_file: str | None = None
+
+    @property
+    def skip_reason(self) -> str | None:
+        return skip_reason_of(self.skip)
 
     @field_validator("timeout")
     @classmethod

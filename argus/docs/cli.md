@@ -178,8 +178,12 @@ Output groups tests by feature:
 ```text
 Movies
   MOV-001    Movie artwork appears  (android, yocto)
-  MOV-002    Movie title appears    (android, yocto)
+  MOV-002    Movie title appears    (android, yocto)  skip: trailer CDN down
 ```
+
+Tests (or whole features) with `skip:` in their YAML are listed with their
+reason; `argus run` reports them as skipped without executing them (see
+[test-authoring.md](test-authoring.md#skipping-tests-and-features)).
 
 ## argus init
 

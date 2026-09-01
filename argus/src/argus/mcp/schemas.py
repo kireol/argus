@@ -53,6 +53,8 @@ class TestSummary(BaseModel):
     priority: str | None = None
     step_count: int
     required_devices: list[str] = Field(default_factory=list)
+    #: Set when the test declares ``skip:`` (it is reported as skipped, never run).
+    skip_reason: str | None = None
 
     @classmethod
     def from_definition(cls, test: TestDefinition) -> TestSummary:
@@ -66,6 +68,7 @@ class TestSummary(BaseModel):
             priority=test.priority,
             step_count=len(test.steps),
             required_devices=test.required_devices,
+            skip_reason=test.skip_reason,
         )
 
 
