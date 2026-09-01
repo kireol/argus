@@ -11,6 +11,8 @@ Performance notes:
 
 from __future__ import annotations
 
+import math
+
 import cv2
 import numpy as np
 
@@ -93,6 +95,53 @@ def _confidence_from_result(
         # overflow cannot sneak through as a "perfect" match.
         confidence = float(np.clip(confidence, 0.0, 1.0))
     return confidence, loc
+
+
+#: Below this std-dev (0–255 scale) a template is "flat" under its mask.
+_FLAT_TEMPLATE_STD = 1.0
+
+
+def _masked_ccoeff_at(
+    haystack: np.ndarray,
+    template: np.ndarray,
+    mask: np.ndarray,
+    loc: tuple[int, int],
+) -> float:
+    """Mean-subtracted normalized correlation of ``template`` with the haystack
+    patch at ``loc``, over ``mask > 0`` pixels. Returns a value in ``[-1, 1]``.
+
+    Masked ``TM_CCORR_NORMED`` is a cosine between two all-positive vectors, so
+    a bright icon *shape* over flat dim chrome scores ~0.99 even with no icon
+    there (TT-DOOR_FL-002). Subtracting the mean first makes a flat patch score
+    ~0 while a real icon stays ~1. A crisp one-colour glyph has no variance
+    under its own mask; for those the mask is grown by one pixel so the dark
+    rim gives the comparison structure. Degenerate inputs (patch out of bounds,
+    fewer than four pixels, zero variance) return 0.0.
+    """
+    x, y = loc
+    th, tw = template.shape[:2]
+    patch = haystack[y : y + th, x : x + tw]
+    if patch.shape[:2] != (th, tw):
+        return 0.0
+
+    def _select(m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        keep = m > 0
+        return (
+            template[keep].astype(np.float64).reshape(-1),
+            patch[keep].astype(np.float64).reshape(-1),
+        )
+
+    t, h = _select(mask)
+    if t.size < 4:
+        return 0.0
+    if t.std() < _FLAT_TEMPLATE_STD:
+        t, h = _select(cv2.dilate(mask, np.ones((3, 3), np.uint8)))
+    t = t - t.mean()
+    h = h - h.mean()
+    denom = math.sqrt(float(np.dot(t, t)) * float(np.dot(h, h)))
+    if not np.isfinite(denom) or denom < 1e-9:
+        return 0.0
+    return float(np.clip(np.dot(t, h) / denom, -1.0, 1.0))
 
 
 class _ImageVerifierBase(Verifier):
@@ -263,6 +312,12 @@ class _ImageVerifierBase(Verifier):
             else:
                 result = cv2.matchTemplate(haystack, scaled, method)
             confidence, loc = _confidence_from_result(result, method)
+            if scaled_mask is not None:
+                # CCORR only locates the peak; re-score it mean-subtracted so an
+                # icon-shaped patch of empty chrome cannot pass as the icon.
+                confidence = max(
+                    0.0, _masked_ccoeff_at(haystack, scaled, scaled_mask, loc)
+                )
             if confidence > best_confidence:
                 best_confidence = confidence
                 best_location = Region(

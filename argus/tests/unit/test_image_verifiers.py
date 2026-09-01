@@ -392,3 +392,81 @@ class TestAssetStore:
         store = AssetStore([asset_dir])
         assert store.exists("movie_123.png")
         assert not store.exists("missing.png")
+
+
+# -- masked matching on empty chrome ----------------------------------------------------------
+
+
+def _dim_chrome(width: int = 400, height: int = 160, seed: int = 1):
+    """Noisy dim cluster chrome (~BGR 10/20/15) with no icon on it."""
+    import numpy as np
+    from PIL import Image
+
+    rng = np.random.default_rng(seed)
+    base = np.array([15, 20, 10], dtype=np.int16)  # RGB of BGR 10/20/15
+    noise = rng.integers(-6, 7, size=(height, width, 3), dtype=np.int16)
+    return Image.fromarray(np.clip(base + noise, 0, 255).astype("uint8"), "RGB")
+
+
+def _paste_icon(screen, icon, position):
+    """Paste only the icon's non-black pixels (no black plate) onto the screen."""
+    alpha = icon.convert("L").point(lambda v: 255 if v > 0 else 0)
+    out = screen.copy()
+    out.paste(icon, position, mask=alpha)
+    return out
+
+
+def test_mask_background_absent_on_dim_chrome(image_config, tmp_path):
+    """TT-DOOR_FL-002: a masked telltale must not 'appear' on empty dim chrome.
+
+    Masked TM_CCORR_NORMED scores ~0.99 wherever the mask *shape* overlaps flat
+    dim chrome; image_not_present then fails with "unexpectedly present".
+    """
+    from PIL import Image, ImageDraw
+
+    ref = Image.new("RGB", (96, 96), (0, 0, 0))
+    ImageDraw.Draw(ref).rectangle((8, 8, 87, 87), outline=(255, 0, 0), width=10)
+    ref.save(tmp_path / "door_ajar.png")
+
+    store = AssetStore([tmp_path])
+    present = ImagePresentVerifier(store, image_config)
+    absent = ImageAbsentVerifier(store, image_config)
+    exp = Expectation(
+        image="door_ajar.png",
+        threshold=0.70,
+        grayscale=True,
+        scale_tolerance=0.5,
+        mask_background=True,
+    )
+    chrome = _dim_chrome()
+    assert not present.verify(observe(chrome), exp).passed
+    result = absent.verify(observe(chrome), exp)
+    assert result.passed, result.message
+    assert result.confidence is not None and result.confidence < 0.70
+
+
+def test_mask_background_present_still_finds_icon_on_chrome(image_config, tmp_path):
+    """The fix must not cost real icons: a green chevron on the same chrome matches."""
+    from PIL import Image, ImageDraw
+
+    ref = Image.new("RGB", (40, 40), (0, 0, 0))
+    ImageDraw.Draw(ref).polygon([(5, 20), (30, 5), (30, 35)], fill=(0, 220, 80))
+    ref.save(tmp_path / "chevron.png")
+
+    store = AssetStore([tmp_path])
+    present = ImagePresentVerifier(store, image_config)
+    absent = ImageAbsentVerifier(store, image_config)
+    exp = Expectation(
+        image="chevron.png",
+        threshold=0.70,
+        grayscale=True,
+        scale_tolerance=0.5,
+        mask_background=True,
+    )
+    screen = _paste_icon(_dim_chrome(), ref, (200, 60))
+    result = present.verify(observe(screen), exp)
+    assert result.passed, result.message
+    assert result.confidence is not None and result.confidence >= 0.70
+    assert result.location is not None
+    assert abs(result.location.x - 200) <= 2 and abs(result.location.y - 60) <= 2
+    assert not absent.verify(observe(screen), exp).passed
