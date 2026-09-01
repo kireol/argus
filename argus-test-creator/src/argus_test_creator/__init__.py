@@ -5,4 +5,4 @@ output is a valid Argus test definition plus its assets — it never executes
 tests itself.
 """
 
-__version__ = "1.2.7"
+__version__ = "1.2.8"
