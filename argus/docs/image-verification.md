@@ -36,6 +36,15 @@ Use this for telltales / turn signals captured as crops on black (or any dark)
 chrome. Leave it off for full-bleed screenshot comparisons where the background
 is part of the assertion.
 
+How the masked score is computed: the masked OpenCV method only *locates* the
+best candidate; the reported confidence is then a mean-subtracted normalized
+correlation of the reference with that patch (masked pixels only). Without
+that step an icon-shaped patch of empty, dim chrome scores ~0.99 — the icon's
+mask "shape" overlaps flat pixels — so `image_not_present` reported a hidden
+telltale as unexpectedly present. Real icons still score close to 1.0; empty
+chrome drops well below a 0.70 threshold. For a crisp one-colour glyph the
+mask is grown by one pixel so its dark rim gives the comparison structure.
+
 A passing result reports where the image was found:
 
 ```json
