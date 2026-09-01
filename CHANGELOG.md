@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.9] - 2026-09-01
+
+### Fixed
+- **Masked telltale `image_not_present` on empty chrome.** With
+  `mask_background`, an icon-shaped patch of flat dim chrome scored ~0.92–0.99
+  under masked `TM_CCORR_NORMED` (a cosine between all-positive vectors), so a
+  hidden telltale was reported "unexpectedly present" next to unrelated text
+  (TT-DOOR_FL-002). The masked method now only locates the peak; the reported
+  confidence is a mean-subtracted normalized correlation at that spot, which
+  keeps real icons near 1.0 and drops empty chrome well below 0.70. Crisp
+  one-colour glyphs use a one-pixel-grown mask so their dark rim provides the
+  structure. Locating stays on CCORR; `image_not_present` auto-shrink is
+  unchanged (off). Only Argus is bumped (Test Creator stays 1.2.8).
+
 ## [1.2.8] - 2026-09-01
 
 ### Added
