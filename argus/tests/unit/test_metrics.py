@@ -82,3 +82,12 @@ def test_metric_summary_json_fields() -> None:
         unit="fps", count=3, min=1, max=3, average=2, median=2
     ).model_dump()
     assert set(dumped) == {"unit", "count", "min", "max", "average", "median"}
+
+
+def test_every_known_metric_has_a_description():
+    from argus.models.metrics import METRIC_ORDER, description_for
+
+    for name in METRIC_ORDER:
+        text = description_for(name)
+        assert text and text != name, name
+    assert description_for("custom_thing") == ""
