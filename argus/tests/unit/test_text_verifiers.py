@@ -53,6 +53,26 @@ def test_text_not_present_ignores_trailing_punctuation():
     assert not result.passed
 
 
+def test_text_present_percent_needle_accepts_ocr_letter_o():
+    """VM-EV-002: widget shows 0%; Tesseract reads O% / o%."""
+    verifier = TextPresentVerifier(_FixedOCR("O% | Okm o% | Okm"))
+    result = verifier.verify(
+        _observation(),
+        Expectation(text="0%", region=Region(x=0, y=0, width=1, height=1)),
+    )
+    assert result.passed
+
+
+def test_text_present_percent_needle_does_not_match_bare_zero():
+    """SOC 0% must not pass on range '0 km' alone."""
+    verifier = TextPresentVerifier(_FixedOCR("0 km"))
+    result = verifier.verify(
+        _observation(),
+        Expectation(text="0%", region=Region(x=0, y=0, width=1, height=1)),
+    )
+    assert not result.passed
+
+
 def test_text_present_matches_numeric_needle_with_ocr_digit_confusions():
     verifier = TextPresentVerifier(_FixedOCR("G6O- GO GO |"))
     result = verifier.verify(

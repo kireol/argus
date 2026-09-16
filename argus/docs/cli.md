@@ -67,6 +67,8 @@ argus run --no-logs                         # progress only; hide timestamped IN
 `--skip-to N` starts at the Nth test in the filtered suite (1-based),
 matching the `N/M` progress shown in the console. Earlier tests are not
 executed; progress still shows `68/70`, `69/70`, …
+Tests whose `platforms:` have no configured device are omitted from that
+count (they never appear as a progress line).
 
 Failure policy (spec §24 — centralized, default stop-on-failure):
 

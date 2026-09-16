@@ -14,7 +14,7 @@ from argus.models.results import VerificationResult
 from argus.ocr.base import OCRProvider
 from argus.verifiers.base import Expectation, Verifier
 
-_NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9]+")
+_NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9%]+")
 _OCR_DIGIT_CONFUSIONS = str.maketrans(
     {
         "O": "0",
@@ -43,8 +43,14 @@ def _normalize_text_match(text: str, *, case_sensitive: bool) -> str:
     return normalized if case_sensitive else normalized.lower()
 
 
-def _is_numeric_needle(text: str) -> bool:
-    return bool(text) and text.isdigit()
+def _needle_has_digits(text: str) -> bool:
+    """True when OCR digit confusions (O→0, …) should apply.
+
+    Purely numeric needles (``60``) and mixed ones (``0%``, ``75%``) both
+    need the OCR map; words like ``Door Open`` must not, or D→0 would
+    rewrite the haystack.
+    """
+    return any(ch.isdigit() for ch in text)
 
 
 def _haystacks_for_match(extracted: str, *, case_sensitive: bool) -> list[str]:
@@ -86,7 +92,7 @@ class TextPresentVerifier(_TextVerifierBase):
         needle = expectation.text or ""
         target = _normalize_text_match(needle, case_sensitive=expectation.case_sensitive)
         haystacks = _haystacks_for_match(extracted, case_sensitive=expectation.case_sensitive)
-        if _is_numeric_needle(needle):
+        if _needle_has_digits(needle):
             passed = any(target in haystack for haystack in haystacks)
         else:
             passed = target in haystacks[0]
@@ -108,7 +114,7 @@ class TextAbsentVerifier(_TextVerifierBase):
         needle = expectation.text or ""
         target = _normalize_text_match(needle, case_sensitive=expectation.case_sensitive)
         haystacks = _haystacks_for_match(extracted, case_sensitive=expectation.case_sensitive)
-        if _is_numeric_needle(needle):
+        if _needle_has_digits(needle):
             passed = all(target not in haystack for haystack in haystacks)
         else:
             passed = target not in haystacks[0]

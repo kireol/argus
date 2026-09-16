@@ -266,4 +266,43 @@ class TestSkippedReason:
         bus.publish(TestSkipped(result=result))
         text = buffer.getvalue()
         assert "- 1/1 - T-1" in text
-        assert "skipped: flaky until ARG-42" in text
+        # Rich may soft-wrap the status line; ignore whitespace when matching.
+        assert "skipped: flaky until ARG-42" in " ".join(text.split())
+
+
+class TestRunSummaryFooter:
+    def test_all_tests_passed_message(self):
+        from argus.events.events import TestRunCompleted
+        from argus.models.results import RunResult, RunStatus
+
+        reporter, buffer = _reporter()
+        bus = EventBus()
+        reporter.attach(bus)
+        passed = _result("T-1", "first")
+        bus.publish(TestRunStarted(total_tests=1))
+        bus.publish(TestRunCompleted(result=RunResult(status=RunStatus.PASSED, tests=[passed])))
+        text = buffer.getvalue()
+        assert "All tests passed" in text
+        assert "Failed tests:" not in text
+
+    def test_lists_failed_tests(self):
+        from argus.events.events import TestRunCompleted
+        from argus.models.results import RunResult, RunStatus
+
+        reporter, buffer = _reporter()
+        bus = EventBus()
+        reporter.attach(bus)
+        failed = _result("F-001", "broken verify", status=TestStatus.FAILED)
+        failed.platform = "android"
+        errored = _result("E-001", "crashed action", status=TestStatus.ERROR)
+        bus.publish(TestRunStarted(total_tests=2))
+        bus.publish(
+            TestRunCompleted(
+                result=RunResult(status=RunStatus.FAILED, tests=[failed, errored])
+            )
+        )
+        text = buffer.getvalue()
+        assert "Failed tests:" in text
+        assert "- F-001: broken verify (android)" in text
+        assert "- E-001: crashed action" in text
+        assert "All tests passed" not in text
