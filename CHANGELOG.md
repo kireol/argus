@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **End-of-run failure list on the CLI.** After the summary counts,
+  `argus run` prints `All tests passed` when nothing failed, or a
+  `Failed tests:` list with each failing test id and name.
+
+## [1.2.11] - 2026-09-02
+
+### Fixed
+- **`--skip-to` matches console `N/M`.** Tests whose `platforms:` have no
+  configured device (e.g. `platforms: [cpp]` on an Android-only config) were
+  counted in `Found N tests` and `--skip-to` but never printed a progress
+  line, so resume landed earlier than the failed test number (the console
+  showed 179/306 but `--skip-to 179` ran an earlier test). Those tests are omitted
+  from the run list. `argus list` still shows them.
+
+## [1.2.10] - 2026-09-01
+
+### Fixed
+- **`text_present` for `0%` / `75%`.** OCR digit confusions (O→0, …) only ran
+  when the needle was all digits, so `0%` missed a real `0%` that Tesseract
+  read as `O%`. Confusions now apply whenever the needle contains
+  a digit. `%` is kept during punctuation normalize so `0%` does not match a
+  bare `0 items`. Only Argus is bumped (Test Creator stays 1.2.8).
+
 ## [1.2.9] - 2026-09-01
 
 ### Fixed

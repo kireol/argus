@@ -141,6 +141,9 @@ test needs it.
 
 OCR tips: prefer regions around the text, large/high-contrast text reads
 best, and use `case_sensitive: false` (the default) unless case matters.
+Needles that contain a digit (`60`, `0%`, `75%`) also match common OCR
+digit confusions (O→0, I/l/|→1, …). `%` is kept so `0%` does not match a
+bare `0 items`.
 
 ## Diagnosing failures
 
