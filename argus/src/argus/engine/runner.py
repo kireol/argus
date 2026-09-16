@@ -178,6 +178,9 @@ class TestRunner:
 
         suite = self.load_suite()
         tests = options.filters.apply(suite.tests)
+        # Drop tests whose platforms have no configured device so ``--skip-to N``
+        # matches the console ``N/M`` (those tests never emit start/skip events).
+        tests = [t for t in tests if self._has_configured_device(t)]
         total_tests = len(tests)
         skip_reasons = {t.id: r for t in tests if (r := self._skip_reason(suite, t))}
         runnable = [t for t in tests if t.id not in skip_reasons]
@@ -262,7 +265,13 @@ class TestRunner:
                         self.events.publish(TestSkipped(result=run_result.tests[-1]))
                         continue
 
-                    for platform in self._platforms_for(test, options.filters, session):
+                    platforms = self._platforms_for(test, options.filters, session)
+                    if not platforms:
+                        reason = "no configured device for this test's platform(s)"
+                        run_result.tests.append(self._skipped(test, reason))
+                        self.events.publish(TestSkipped(result=run_result.tests[-1]))
+                        continue
+                    for platform in platforms:
                         setup_error = lifecycle.before(test, platform)
                         if setup_error is None:
                             result = self._run_test_with_retries(
@@ -431,6 +440,12 @@ class TestRunner:
                 seen.add(name)
                 unique.append(name)
         return unique
+
+    def _has_configured_device(self, test: TestDefinition) -> bool:
+        """True when this test can bind a device (or needs none)."""
+        if not test.platforms:
+            return True
+        return any(self.config.devices_for_platform(p) for p in test.platforms)
 
     def _platforms_for(
         self, test: TestDefinition, filters: TestFilter, session: RunSession

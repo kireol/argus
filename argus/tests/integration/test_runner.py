@@ -327,6 +327,37 @@ def test_skip_to_runs_from_ordinal(tmp_path):
         TestRunner(config).run(RunOptions(skip_to=4))
 
 
+def test_skip_to_matches_console_when_platform_has_no_device(tmp_path):
+    """cpp-only tests must not occupy a skip-to slot on an android-only config.
+
+    They never emit TestStarted, so a full run's ``N/M`` skipped them; --skip-to
+    used to count them and land two tests earlier (e.g. test 4 instead of test 6).
+    """
+    from argus.events.events import TestRunStarted
+
+    config = build_config(tmp_path)
+    write_suite(
+        tmp_path,
+        [
+            passing_test("C-001", platforms=["cpp"]),
+            passing_test("C-002", platforms=["cpp"]),
+            passing_test("A-001"),
+            passing_test("A-002"),
+            passing_test("A-003"),
+        ],
+    )
+    full = TestRunner(config).run()
+    assert [t.test_id for t in full.tests] == ["A-001", "A-002", "A-003"]
+
+    events = EventBus()
+    started: list[TestRunStarted] = []
+    events.subscribe(started.append, TestRunStarted)
+    result = TestRunner(config, events).run(RunOptions(skip_to=3))
+    assert [t.test_id for t in result.tests] == ["A-003"]
+    assert started[0].total_tests == 3
+    assert started[0].start_index == 3
+
+
 # -- feature-level setup / teardown ------------------------------------------------------
 
 

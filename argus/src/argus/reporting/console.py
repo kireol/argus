@@ -28,7 +28,7 @@ from argus.events.events import (
     TestStarted,
 )
 from argus.models.metrics import format_metrics_lines
-from argus.models.results import RunStatus, TestResult
+from argus.models.results import RunStatus, TestStatus, TestResult
 from argus.utilities.duration import format_duration
 
 _RULE = "─" * 40
@@ -302,6 +302,19 @@ class ConsoleReporter:
         self.console.print(f"Duration: {format_duration(result.duration)}")
         if result.results_dir:
             self.console.print(f"Results:  {result.results_dir}")
+        failed_tests = [
+            test
+            for test in result.tests
+            if test.status in (TestStatus.FAILED, TestStatus.ERROR)
+        ]
+        self.console.print()
+        if failed_tests:
+            self.console.print("Failed tests:")
+            for test in failed_tests:
+                platform = f" ({test.platform})" if test.platform else ""
+                self.console.print(f"  - {test.test_id}: {test.name}{platform}")
+        else:
+            self.console.print("All tests passed")
         if (
             not self.quiet
             and not self.no_logs
