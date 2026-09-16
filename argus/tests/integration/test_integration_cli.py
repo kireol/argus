@@ -157,6 +157,48 @@ def test_run_feature_filter(project):
     assert result.exit_code == 0, result.output
     assert "MOV-001" in result.output
     assert "TEST RUN PASSED" in result.output
+    assert "All tests passed" in result.output
+
+
+def test_run_lists_failed_tests(project, tmp_path):
+    suite = tmp_path / "suites" / "movies.yaml"
+    data = yaml.safe_load(suite.read_text())
+    data["tests"] = [
+        {
+            "id": "FAIL-001",
+            "name": "Always fails",
+            "feature": "Movies",
+            "platforms": ["android"],
+            "steps": [
+                {
+                    "action": "verify",
+                    "condition": {"type": "image_present", "image": "movie_123.png"},
+                }
+            ],
+        },
+        {
+            "id": "FAIL-002",
+            "name": "Also fails",
+            "feature": "Movies",
+            "platforms": ["android"],
+            "steps": [
+                {
+                    "action": "verify",
+                    "condition": {"type": "image_present", "image": "movie_123.png"},
+                }
+            ],
+        },
+    ]
+    suite.write_text(yaml.safe_dump(data))
+    result = runner.invoke(
+        app,
+        ["run", "--config", str(project), "--continue-on-failure"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "Failed tests:" in result.output
+    assert "FAIL-001: Always fails" in result.output
+    assert "FAIL-002: Also fails" in result.output
+    assert "All tests passed" not in result.output
 
 
 def test_run_writes_reports(project, tmp_path):
